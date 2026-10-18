@@ -243,6 +243,9 @@ Rectangle {
                 root.zoomOut(true);
                 root.wheelAccumulatedDelta = 0;
             }
+        } else if (wheel.angleDelta.x !== 0 && wheel.angleDelta.y === 0) {
+            // Horizontal gesture, ignore the scrollvertically setting
+            horizontalScroll(wheel)
         } else if (wheel.modifiers & Qt.ShiftModifier) {
             if (K.KdenliveSettings.scrollvertically || rubberSelect.visible) {
                 horizontalScroll(wheel)
@@ -259,12 +262,21 @@ Rectangle {
         wheel.accepted = true
     }
 
+    // Touchpads use a dedicated axis, mice always report angleDelta.y
+    function scrollDelta(wheel, horizontal) {
+        if (horizontal && wheel.angleDelta.x !== 0) {
+            return wheel.angleDelta.x
+        }
+        return wheel.angleDelta.y
+    }
+
     function horizontalScroll(wheel) {
         var initialX = scrollView.contentX
-        if (wheel.angleDelta.y < 0) {
-            scrollView.contentX = Math.max(0, Math.min(scrollView.contentX - wheel.angleDelta.y, root.timeline.fullDuration * root.timeScale - scrollView.width))
+        var delta = scrollDelta(wheel, true)
+        if (delta < 0) {
+            scrollView.contentX = Math.max(0, Math.min(scrollView.contentX - delta, root.timeline.fullDuration * root.timeScale - scrollView.width))
         } else {
-            scrollView.contentX = Math.max(scrollView.contentX - wheel.angleDelta.y, 0)
+            scrollView.contentX = Math.max(scrollView.contentX - delta, 0)
         }
         if (dragProxyArea.pressed && dragProxy.draggedItem > -1) {
             dragProxy.x += scrollView.contentX - initialX
@@ -283,10 +295,11 @@ Rectangle {
 
     function verticalScroll(wheel) {
         var initialY = scrollView.contentY
-        if (wheel.angleDelta.y < 0) {
-            scrollView.contentY = Math.max(0, Math.min(scrollView.contentY - wheel.angleDelta.y, trackHeaders.height + subtitleTrackHeader.height - tracksArea.height + horZoomBar.height + ruler.height))
+        var delta = scrollDelta(wheel, false)
+        if (delta < 0) {
+            scrollView.contentY = Math.max(0, Math.min(scrollView.contentY - delta, trackHeaders.height + subtitleTrackHeader.height - tracksArea.height + horZoomBar.height + ruler.height))
         } else {
-            scrollView.contentY = Math.max(scrollView.contentY - wheel.angleDelta.y, 0)
+            scrollView.contentY = Math.max(scrollView.contentY - delta, 0)
         }
         if (dragProxyArea.pressed && dragProxy.draggedItem > -1) {
             dragProxyArea.moveItem()
