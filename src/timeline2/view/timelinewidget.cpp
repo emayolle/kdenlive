@@ -27,12 +27,14 @@
 #include <QActionGroup>
 #include <QFontDatabase>
 #include <QMenu>
+#include <QNativeGestureEvent>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QSortFilterProxyModel>
 #include <QTimer>
 #include <QUuid>
+#include <iterator>
 
 const int TimelineWidget::comboScale[] = {1, 2, 4, 8, 15, 30, 50, 75, 100, 150, 200, 300, 500, 800, 1000, 1500, 2000, 3000, 6000, 15000, 30000};
 
@@ -210,6 +212,49 @@ void TimelineWidget::mousePressEvent(QMouseEvent *event)
     Q_EMIT focusProjectMonitor();
     m_clickPos = event->globalPosition().toPoint();
     QQuickWidget::mousePressEvent(event);
+}
+
+bool TimelineWidget::event(QEvent *event)
+{
+    if (event->type() == QEvent::NativeGesture) {
+        return nativeGestureEvent(static_cast<QNativeGestureEvent *>(event));
+    }
+    return QQuickWidget::event(event);
+}
+
+bool TimelineWidget::nativeGestureEvent(QNativeGestureEvent *event)
+{
+    switch (event->gestureType()) {
+    case Qt::BeginNativeGesture:
+        m_pinchZoomActive = true;
+        m_pinchZoomBase = timelineController.scaleFactor();
+        return true;
+    case Qt::EndNativeGesture:
+        m_pinchZoomActive = false;
+        m_pinchZoomBase = 0.;
+        return true;
+    case Qt::ZoomNativeGesture: {
+        if (!m_pinchZoomActive || !isEnabled() || m_pinchZoomBase <= 0.) {
+            return false;
+        }
+        // Apply continuously, the scale steps are too coarse for a gesture
+        m_pinchZoomBase *= 1. + event->value();
+
+        const double pixelScale = QFontMetrics(font()).maxWidth() * 2;
+        const double maxScale = pixelScale / comboScale[0];
+        const double minScale = pixelScale / comboScale[(int)std::size(comboScale) - 1];
+        const double newScale = qBound(minScale, m_pinchZoomBase, maxScale);
+        if (qFuzzyCompare(newScale, timelineController.scaleFactor())) {
+            return true;
+        }
+        m_pinchZoomBase = newScale;
+        timelineController.setScaleFactorOnMouse(newScale, !KdenliveSettings::timelinemousezoomonplayhead());
+        return true;
+    }
+    default:
+        break;
+    }
+    return false;
 }
 
 void TimelineWidget::mouseMoveEvent(QMouseEvent *event)
