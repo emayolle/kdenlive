@@ -11,6 +11,7 @@
 
 class KActionCollection;
 class QAction;
+class QNativeGestureEvent;
 class ThumbnailProvider;
 class QSortFilterProxyModel;
 class MonitorProxy;
@@ -52,6 +53,9 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void hideEvent(QHideEvent *event) override;
+    bool event(QEvent *event) override;
+    /** @brief Handle compositor native gestures (touchpad pinch zoom) */
+    bool nativeGestureEvent(QNativeGestureEvent *event);
 
 public Q_SLOTS:
     void slotChangeZoom(int value, bool zoomOnMouse);
@@ -104,6 +108,10 @@ private:
     QAction *m_editGuideAcion;
     QMenu *m_timelineSubtitleClipMenu;
     static const int comboScale[];
+    /** @brief Set while a touchpad pinch gesture is in progress */
+    bool m_pinchZoomActive{false};
+    /** @brief Running scale factor while pinching, reset when the gesture ends */
+    double m_pinchZoomBase{0.};
     std::unique_ptr<QSortFilterProxyModel> m_sortModel;
     /** @brief Keep last scale before fit to restore it on second click */
     double m_prevScale;
