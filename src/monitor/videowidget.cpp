@@ -24,6 +24,7 @@
 
 #include <QApplication>
 #include <QFontDatabase>
+#include <QNativeGestureEvent>
 #include <QOpenGLContext>
 #if QT_CONFIG(opengles2)
 #include <QOpenGLFunctions_ES2>
@@ -318,6 +319,47 @@ void VideoWidget::slotZoom(bool zoomIn)
     } else if (m_zoom > 0.2f) {
         setZoom(m_zoom / 1.2f);
     }
+}
+
+bool VideoWidget::event(QEvent *event)
+{
+    if (event->type() == QEvent::NativeGesture) {
+        return nativeGestureEvent(static_cast<QNativeGestureEvent *>(event));
+    }
+    return QQuickWidget::event(event);
+}
+
+bool VideoWidget::nativeGestureEvent(QNativeGestureEvent *event)
+{
+    switch (event->gestureType()) {
+    case Qt::BeginNativeGesture:
+        m_pinchZoomActive = true;
+        m_pinchZoom = m_zoom;
+        return true;
+    case Qt::EndNativeGesture:
+        m_pinchZoomActive = false;
+        m_pinchZoom = 0.;
+        return true;
+    case Qt::ZoomNativeGesture: {
+        if (!m_pinchZoomActive || m_pinchZoom <= 0.) {
+            return false;
+        }
+        // Apply continuously, like slotZoom but without the fixed 1.2 steps
+        m_pinchZoom *= 1. + event->value();
+
+        const double maxZoom = qMin(m_profileSize.width() / 60., m_profileSize.height() / 60.);
+        const double newZoom = qBound(0.2, m_pinchZoom, maxZoom);
+        if (qFuzzyCompare(newZoom, double(m_zoom))) {
+            return true;
+        }
+        m_pinchZoom = newZoom;
+        setZoom(newZoom);
+        return true;
+    }
+    default:
+        break;
+    }
+    return false;
 }
 
 void VideoWidget::slotZoomReset()

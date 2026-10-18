@@ -283,6 +283,13 @@ protected:
     void keyPressEvent(QKeyEvent *event) override;
     void focusInEvent(QFocusEvent *event) override;
     void focusOutEvent(QFocusEvent *event) override;
+    bool event(QEvent *event) override;
+    /** @brief Handle compositor native gestures (touchpad pinch zoom) */
+    bool nativeGestureEvent(QNativeGestureEvent *event);
+    /** @brief Set while a touchpad pinch gesture is in progress */
+    bool m_pinchZoomActive{false};
+    /** @brief Running zoom value while pinching, reset when the gesture ends */
+    double m_pinchZoom{0.};
 };
 
 class RenderThread : public QThread
