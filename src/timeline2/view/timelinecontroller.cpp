@@ -3537,7 +3537,17 @@ void TimelineController::extract(int clipId, bool singleSelectionMode)
         TimelineFunctions::extractZone(m_model, tracks, QPoint(in, out), false, clipToUngroup, clipsToRegroup);
         return;
     }
-    if (singleSelectionMode) {
+    // Extracting a single clip must take it out of its group, otherwise the whole group
+    // is expanded instead. The user asked for that one clip only, so check that the
+    // selection designates it and nothing else. getCurrentSelection() cannot be used
+    // here, it returns the leaves of a group, which would count as several items.
+    bool singleClipSelected = false;
+    const std::unordered_set<int> currentSelection = m_model->getCurrentSelection();
+    if (currentSelection.size() == 1) {
+        const int selected = *currentSelection.begin();
+        singleClipSelected = m_model->isClip(selected) && selected == clipId;
+    }
+    if (singleSelectionMode || singleClipSelected) {
         // Remove item from group
         clipsToRegroup = m_model->m_groups->getLeaves(m_model->m_groups->getRootId(clipId));
         clipToUngroup = clipId;

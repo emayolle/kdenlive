@@ -812,8 +812,11 @@ bool TimelineFunctions::breakAffectedGroups(const std::shared_ptr<TimelineItemMo
             for (int child : all_children) {
                 int childTrackId = timeline->getItemTrackId(child);
                 if (!tracks.contains(childTrackId) && timeline->m_groups->isInGroup(child)) {
-                    // This item should not be affected by the operation, ungroup it
-                    result = result && timeline->requestClipUngroup(child, undo, redo);
+                    // This item should not be affected by the operation, take it out of the
+                    // group. removeFromGroup only detaches the item from its direct parent and
+                    // leaves the rest of the group hierarchy untouched, so the other members
+                    // stay grouped together. Groups left with a single member are dissolved.
+                    result = result && timeline->m_groups->removeFromGroup(child, undo, redo, true);
                 }
             }
         }
@@ -839,7 +842,10 @@ bool TimelineFunctions::extractZoneWithUndo(const std::shared_ptr<TimelineItemMo
     // The playhead must follow the content it points at, remember it before the zone is removed
     const int playhead = pCore->getMonitorPosition();
     if (clipToUnGroup > -1) {
-        result = timeline->requestClipUngroup(clipToUnGroup, undo, redo);
+        // Take the item out of its group without dissolving the whole group:
+        // requestClipUngroup would destroy the group and leave the other members
+        // ungrouped. The remaining members are regrouped at the end of this function.
+        result = timeline->m_groups->removeFromGroup(clipToUnGroup, undo, redo, true);
     }
     result = breakAffectedGroups(timeline, tracks, zone, undo, redo);
     for (auto trackId : tracks) {
@@ -878,6 +884,7 @@ bool TimelineFunctions::extractZoneWithUndo(const std::shared_ptr<TimelineItemMo
         }
     }
     if (clipsToRegroup.size() > 1) {
+        // Regroup the members that were left, the group was split by the operation
         result = timeline->requestClipsGroup(clipsToRegroup, undo, redo);
     }
     return result;
