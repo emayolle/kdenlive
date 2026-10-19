@@ -150,6 +150,8 @@ public Q_SLOTS:
     void setZoom(float zoom, bool force = false);
     void setOffsetX(int horizontalScrollValue, int horizontalScrollMaximum, int verticalScrollBarWidth);
     void setOffsetY(int verticalScrollValue, int verticalScrollMaximum, int horizontalScrollBarHeight);
+    /** @brief Set the frame offset relative to the view centre */
+    void setOffset(double x, double y);
     void slotZoom(bool zoomIn);
     void slotZoomReset();
     void releaseAnalyse();
@@ -173,6 +175,7 @@ Q_SIGNALS:
     void paused();
     void playing();
     void zoomChanged(float zoomRatio);
+    void offsetChanged(double x, double y);
     void monitorPlay();
     void switchFullScreen(bool minimizeOnly = false);
     void mouseSeek(int eventDelta, uint modifiers);

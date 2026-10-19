@@ -211,6 +211,7 @@ Monitor::Monitor(Kdenlive::MonitorId id, MonitorManager *manager, QWidget *paren
     connect(m_glMonitor, &VideoWidget::mouseSeek, this, &Monitor::slotMouseSeek);
     connect(m_glMonitor, &VideoWidget::switchFullScreen, this, &Monitor::slotSwitchFullScreen);
     connect(m_glMonitor, &VideoWidget::zoomChanged, this, &Monitor::setZoom);
+    connect(m_glMonitor, &VideoWidget::offsetChanged, this, &Monitor::slotOffsetChanged);
     connect(m_glMonitor, SIGNAL(lockMonitor(bool)), this, SLOT(slotLockMonitor(bool)), Qt::DirectConnection);
     connect(m_glMonitor, &VideoWidget::showContextMenu, this, &Monitor::slotShowMenu);
     connect(m_glMonitor, &VideoWidget::gpuNotSupported, this, &Monitor::gpuError);
@@ -1076,6 +1077,20 @@ void Monitor::setZoom(float zoomRatio)
         float horizontal = float(m_horizontalScroll->value()) / float(m_horizontalScroll->maximum());
         float vertical = float(m_verticalScroll->value()) / float(m_verticalScroll->maximum());
         adjustScrollBars(horizontal, vertical);
+    }
+}
+
+void Monitor::slotOffsetChanged(double x, double y)
+{
+    // Keep the scrollbars in sync with the offset
+    const double zoom = m_glMonitor->zoom();
+    const int maxX = m_horizontalScroll->maximum();
+    const int maxY = m_verticalScroll->maximum();
+    if (maxX > 0) {
+        m_horizontalScroll->setValue(qBound(0, int(qRound(x + maxX / 2. - m_verticalScroll->sizeHint().width() * zoom / 2.)), maxX));
+    }
+    if (maxY > 0) {
+        m_verticalScroll->setValue(qBound(0, int(qRound(y + maxY / 2. - m_horizontalScroll->sizeHint().height() * zoom / 2.)), maxY));
     }
 }
 

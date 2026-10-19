@@ -310,6 +310,7 @@ private Q_SLOTS:
     void onFrameDisplayed(const SharedFrame &frame);
     void slotStartDrag();
     void setZoom(float zoomRatio);
+    void slotOffsetChanged(double x, double y);
     void slotAdjustEffectCompare();
     void slotShowMenu(const QPoint pos);
     void slotForceSize(QAction *a);

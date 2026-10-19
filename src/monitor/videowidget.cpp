@@ -352,8 +352,33 @@ bool VideoWidget::nativeGestureEvent(QNativeGestureEvent *event)
         if (qFuzzyCompare(newZoom, double(m_zoom))) {
             return true;
         }
+        // Not the gesture position: that is a touch point, not the cursor
+        const QPoint cursorPos = mapFromGlobal(QCursor::pos());
+        const QPointF anchor(qBound(0, cursorPos.x(), width()), qBound(0, cursorPos.y(), height()));
+        // Keep the image point below the cursor at the same place
+        const QPointF frameCentre = rootObject() ? rootObject()->property("center").toPointF() : QPointF(rect().center());
+        // The QML frame is sized from m_rect, letterboxed in the widget
+        const double oldWidth = m_rect.width() * m_zoom;
+        const double oldHeight = m_rect.height() * m_zoom;
+        const double newWidth = m_rect.width() * newZoom;
+        const double newHeight = m_rect.height() * newZoom;
+        // offset() uses width(), read what QML actually applied
+        const double currentOffsetX = rootObject() ? rootObject()->property("offsetx").toDouble() : 0.;
+        const double currentOffsetY = rootObject() ? rootObject()->property("offsety").toDouble() : 0.;
+        const double fractionX = oldWidth > 0. ? (anchor.x() - frameCentre.x() + oldWidth / 2. + currentOffsetX) / oldWidth : 0.5;
+        const double fractionY = oldHeight > 0. ? (anchor.y() - frameCentre.y() + oldHeight / 2. + currentOffsetY) / oldHeight : 0.5;
+        // QML places the frame at frameCentre - frameWidth / 2 - offsetx
+        const double newOffsetX = frameCentre.x() - newWidth / 2. - anchor.x() + fractionX * newWidth;
+        const double newOffsetY = frameCentre.y() - newHeight / 2. - anchor.y() + fractionY * newHeight;
+        // Keep the frame covering the view
+        const double maxOffsetX = qMax(0., newWidth / 2. - m_rect.width() / 2.);
+        const double maxOffsetY = qMax(0., newHeight / 2. - m_rect.height() / 2.);
+        const double clampedX = qBound(-maxOffsetX, newOffsetX, maxOffsetX);
+        const double clampedY = qBound(-maxOffsetY, newOffsetY, maxOffsetY);
         m_pinchZoom = newZoom;
         setZoom(newZoom);
+        setOffset(clampedX, clampedY);
+        Q_EMIT offsetChanged(clampedX, clampedY);
         return true;
     }
     default:
@@ -1053,6 +1078,18 @@ void VideoWidget::mouseDoubleClickEvent(QMouseEvent *event)
         Q_EMIT switchFullScreen();
     }
     event->accept();
+}
+
+void VideoWidget::setOffset(double x, double y)
+{
+    const int centreX = static_cast<int>(width() * m_zoom / 2);
+    const int centreY = static_cast<int>(height() * m_zoom / 2);
+    m_offset = QPoint(centreX + static_cast<int>(qRound(x)), centreY + static_cast<int>(qRound(y)));
+    if (rootObject()) {
+        rootObject()->setProperty("offsetx", x);
+        rootObject()->setProperty("offsety", y);
+    }
+    quickWindow()->update();
 }
 
 void VideoWidget::setOffsetX(int horizontalScrollValue, int horizontalScrollMaximum, int verticalScrollBarWidth)
