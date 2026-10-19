@@ -45,7 +45,7 @@ Item {
         cursorShape: Qt.SizeHorCursor
         acceptedButtons: Qt.LeftButton
         onWheel: wheel => {
-            root.controller.seek(wheel.angleDelta.x + wheel.angleDelta.y, wheel.modifiers)
+            root.controller.seek(wheel.angleDelta.x + wheel.angleDelta.y, wheel.modifiers, Qt.point(wheel.x, wheel.y))
         }
         onPressed: {
             root.percentage = (mouseX - (root.width - (root.profile.x * root.scalex)) / 2) / (root.profile.x * root.scalex)

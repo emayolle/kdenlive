@@ -1402,7 +1402,9 @@ void Monitor::slotStartDrag()
 // virtual
 void Monitor::wheelEvent(QWheelEvent *event)
 {
-    slotMouseSeek(event->angleDelta().y(), event->modifiers());
+    // A native wheel event is delivered to this widget, translate its position to
+    // the video widget coordinates that slotMouseSeek expects
+    slotMouseSeek(event->angleDelta().y(), event->modifiers(), m_glMonitor->mapFrom(this, event->position()));
     event->accept();
 }
 
@@ -1427,14 +1429,16 @@ void Monitor::keyPressEvent(QKeyEvent *event)
     QWidget::keyPressEvent(event);
 }
 
-void Monitor::slotMouseSeek(int eventDelta, uint modifiers)
+void Monitor::slotMouseSeek(int eventDelta, uint modifiers, const QPointF &pos)
 {
     if ((modifiers & Qt::ControlModifier) != 0u) {
-        // Ctrl wheel zooms monitor
+        // Ctrl wheel zooms monitor, keeping the point under the cursor in place
         if (eventDelta == 0) {
             return;
         }
-        m_glMonitor->slotZoom(eventDelta > 0);
+        // pos is already in video widget coordinates, the QML path and the native
+        // wheel event above each translate into them
+        m_glMonitor->slotZoomAt(eventDelta > 0, pos);
         return;
     } else if ((modifiers & Qt::ShiftModifier) != 0u) {
         // Shift wheel seeks one second

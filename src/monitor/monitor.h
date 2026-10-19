@@ -399,7 +399,7 @@ public Q_SLOTS:
     bool effectSceneDisplayed(SceneType::MonitorSceneType effectType);
     /** @brief split screen to compare clip with and without effect */
     void slotSwitchCompare(bool enable);
-    void slotMouseSeek(int eventDelta, uint modifiers) override;
+    void slotMouseSeek(int eventDelta, uint modifiers, const QPointF &pos) override;
     void slotSwitchFullScreen(bool minimizeOnly = false) override;
     /** @brief Display or hide the record toolbar */
     void slotSwitchRec(bool enable);

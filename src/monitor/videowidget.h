@@ -153,6 +153,11 @@ public Q_SLOTS:
     /** @brief Set the frame offset relative to the view centre */
     void setOffset(double x, double y);
     void slotZoom(bool zoomIn);
+    /** @brief Zoom in or out keeping the point at @p anchor in place
+     *
+     *  @param zoomIn Zoom in when true, out otherwise
+     *  @param anchor Position, in widget coordinates, of the point to keep in place */
+    void slotZoomAt(bool zoomIn, const QPointF &anchor);
     void slotZoomReset();
     void releaseAnalyse();
     bool switchPlay(bool play, double speed = 1.0);
@@ -178,7 +183,7 @@ Q_SIGNALS:
     void offsetChanged(double x, double y);
     void monitorPlay();
     void switchFullScreen(bool minimizeOnly = false);
-    void mouseSeek(int eventDelta, uint modifiers);
+    void mouseSeek(int eventDelta, uint modifiers, const QPointF &pos);
     void startDrag();
     void analyseFrame(const QImage &);
     void showContextMenu(const QPoint &);
@@ -278,6 +283,21 @@ private Q_SLOTS:
     void forceRefreshZoom();
     /** @brief Hide cursor on inactivity over monitor */
     void blankCursor();
+
+    /** @brief Zoom resulting from a single zoom step
+     *  @param zoomIn Zoom in when true, out otherwise
+     *  @returns the new zoom, or a negative value when the zoom cannot change */
+    double zoomStep(bool zoomIn) const;
+    /** @brief Apply @p newZoom keeping the image point at @p anchor in place
+     *
+     *  Works on the fraction of the image below the anchor and puts it back at the
+     *  same spot, so the point being zoomed does not drift toward the centre. The
+     *  result is clamped so the frame keeps covering the view. Out of view anchors
+     *  are clamped to the nearest view border.
+     *
+     *  @param newZoom The zoom to apply
+     *  @param anchor Position, in widget coordinates, of the point to keep in place */
+    void zoomAtAnchor(const QPointF &anchor, double newZoom);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
