@@ -836,6 +836,8 @@ bool TimelineFunctions::extractZoneWithUndo(const std::shared_ptr<TimelineItemMo
 {
     // Start undoable command
     bool result = true;
+    // The playhead must follow the content it points at, remember it before the zone is removed
+    const int playhead = pCore->getMonitorPosition();
     if (clipToUnGroup > -1) {
         result = timeline->requestClipUngroup(clipToUnGroup, undo, redo);
     }
@@ -848,6 +850,32 @@ bool TimelineFunctions::extractZoneWithUndo(const std::shared_ptr<TimelineItemMo
     }
     if (result && !liftOnly) {
         result = TimelineFunctions::removeSpace(timeline, zone, undo, redo, tracks);
+        if (result) {
+            // removeSpace moved the clips after the zone to the left, the playhead has to
+            // follow them. If it was on the removed content, it goes back to the start of
+            // that content, which is where the following clips now begin.
+            int newPlayhead = playhead;
+            if (playhead >= zone.y()) {
+                // After the zone, the content moved to the left by the zone length
+                newPlayhead = playhead + zone.x() - zone.y();
+            } else if (playhead >= zone.x()) {
+                // On the removed content, go back to the start of the zone
+                newPlayhead = zone.x();
+            }
+            if (newPlayhead != playhead) {
+                pCore->seekMonitor(Kdenlive::ProjectMonitor, newPlayhead);
+                // Keep the playhead in sync when the operation is undone / redone
+                Fun seekPlayhead = [newPlayhead]() {
+                    pCore->seekMonitor(Kdenlive::ProjectMonitor, newPlayhead);
+                    return true;
+                };
+                Fun restorePlayhead = [playhead]() {
+                    pCore->seekMonitor(Kdenlive::ProjectMonitor, playhead);
+                    return true;
+                };
+                UPDATE_UNDO_REDO_NOLOCK(seekPlayhead, restorePlayhead, undo, redo);
+            }
+        }
     }
     if (clipsToRegroup.size() > 1) {
         result = timeline->requestClipsGroup(clipsToRegroup, undo, redo);
