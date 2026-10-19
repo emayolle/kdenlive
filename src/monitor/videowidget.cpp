@@ -308,17 +308,65 @@ void VideoWidget::disableGPUAccel()
     Q_EMIT gpuNotSupported();
 }
 
-void VideoWidget::slotZoom(bool zoomIn)
+double VideoWidget::zoomStep(bool zoomIn) const
 {
     if (zoomIn) {
         // Allow max zoom at 60 pixels in the monitor view
-        double maxZoom = qMin(m_profileSize.width() / 60., m_profileSize.height() / 60.);
-        if (m_zoom < maxZoom) {
-            setZoom(m_zoom * 1.2);
+        const double maxZoom = qMin(m_profileSize.width() / 60., m_profileSize.height() / 60.);
+        if (m_zoom >= maxZoom) {
+            return -1.;
         }
-    } else if (m_zoom > 0.2f) {
-        setZoom(m_zoom / 1.2f);
+        return m_zoom * 1.2;
     }
+    if (m_zoom <= 0.2f) {
+        return -1.;
+    }
+    return m_zoom / 1.2f;
+}
+
+void VideoWidget::slotZoom(bool zoomIn)
+{
+    const double newZoom = zoomStep(zoomIn);
+    if (newZoom > 0.) {
+        setZoom(newZoom);
+    }
+}
+
+void VideoWidget::slotZoomAt(bool zoomIn, const QPointF &anchor)
+{
+    const double newZoom = zoomStep(zoomIn);
+    if (newZoom > 0.) {
+        zoomAtAnchor(anchor, newZoom);
+    }
+}
+
+void VideoWidget::zoomAtAnchor(const QPointF &anchor, double newZoom)
+{
+    // An anchor outside the widget would drag the frame off, clamp it to the border
+    const QPointF clampedAnchor(qBound(0., anchor.x(), double(width())), qBound(0., anchor.y(), double(height())));
+    // Keep the image point below the anchor at the same place
+    const QPointF frameCentre = rootObject() ? rootObject()->property("center").toPointF() : QPointF(rect().center());
+    // The QML frame is sized from m_rect, letterboxed in the widget
+    const double oldWidth = m_rect.width() * m_zoom;
+    const double oldHeight = m_rect.height() * m_zoom;
+    const double newWidth = m_rect.width() * newZoom;
+    const double newHeight = m_rect.height() * newZoom;
+    // offset() uses width(), read what QML actually applied
+    const double currentOffsetX = rootObject() ? rootObject()->property("offsetx").toDouble() : 0.;
+    const double currentOffsetY = rootObject() ? rootObject()->property("offsety").toDouble() : 0.;
+    const double fractionX = oldWidth > 0. ? (clampedAnchor.x() - frameCentre.x() + oldWidth / 2. + currentOffsetX) / oldWidth : 0.5;
+    const double fractionY = oldHeight > 0. ? (clampedAnchor.y() - frameCentre.y() + oldHeight / 2. + currentOffsetY) / oldHeight : 0.5;
+    // QML places the frame at frameCentre - frameWidth / 2 - offsetx
+    const double newOffsetX = frameCentre.x() - newWidth / 2. - clampedAnchor.x() + fractionX * newWidth;
+    const double newOffsetY = frameCentre.y() - newHeight / 2. - clampedAnchor.y() + fractionY * newHeight;
+    // Keep the frame covering the view
+    const double maxOffsetX = qMax(0., newWidth / 2. - m_rect.width() / 2.);
+    const double maxOffsetY = qMax(0., newHeight / 2. - m_rect.height() / 2.);
+    const double clampedX = qBound(-maxOffsetX, newOffsetX, maxOffsetX);
+    const double clampedY = qBound(-maxOffsetY, newOffsetY, maxOffsetY);
+    setZoom(newZoom);
+    setOffset(clampedX, clampedY);
+    Q_EMIT offsetChanged(clampedX, clampedY);
 }
 
 bool VideoWidget::event(QEvent *event)
@@ -352,33 +400,9 @@ bool VideoWidget::nativeGestureEvent(QNativeGestureEvent *event)
         if (qFuzzyCompare(newZoom, double(m_zoom))) {
             return true;
         }
-        // Not the gesture position: that is a touch point, not the cursor
-        const QPoint cursorPos = mapFromGlobal(QCursor::pos());
-        const QPointF anchor(qBound(0, cursorPos.x(), width()), qBound(0, cursorPos.y(), height()));
-        // Keep the image point below the cursor at the same place
-        const QPointF frameCentre = rootObject() ? rootObject()->property("center").toPointF() : QPointF(rect().center());
-        // The QML frame is sized from m_rect, letterboxed in the widget
-        const double oldWidth = m_rect.width() * m_zoom;
-        const double oldHeight = m_rect.height() * m_zoom;
-        const double newWidth = m_rect.width() * newZoom;
-        const double newHeight = m_rect.height() * newZoom;
-        // offset() uses width(), read what QML actually applied
-        const double currentOffsetX = rootObject() ? rootObject()->property("offsetx").toDouble() : 0.;
-        const double currentOffsetY = rootObject() ? rootObject()->property("offsety").toDouble() : 0.;
-        const double fractionX = oldWidth > 0. ? (anchor.x() - frameCentre.x() + oldWidth / 2. + currentOffsetX) / oldWidth : 0.5;
-        const double fractionY = oldHeight > 0. ? (anchor.y() - frameCentre.y() + oldHeight / 2. + currentOffsetY) / oldHeight : 0.5;
-        // QML places the frame at frameCentre - frameWidth / 2 - offsetx
-        const double newOffsetX = frameCentre.x() - newWidth / 2. - anchor.x() + fractionX * newWidth;
-        const double newOffsetY = frameCentre.y() - newHeight / 2. - anchor.y() + fractionY * newHeight;
-        // Keep the frame covering the view
-        const double maxOffsetX = qMax(0., newWidth / 2. - m_rect.width() / 2.);
-        const double maxOffsetY = qMax(0., newHeight / 2. - m_rect.height() / 2.);
-        const double clampedX = qBound(-maxOffsetX, newOffsetX, maxOffsetX);
-        const double clampedY = qBound(-maxOffsetY, newOffsetY, maxOffsetY);
         m_pinchZoom = newZoom;
-        setZoom(newZoom);
-        setOffset(clampedX, clampedY);
-        Q_EMIT offsetChanged(clampedX, clampedY);
+        // Not the gesture position: that is a touch point, not the cursor
+        zoomAtAnchor(mapFromGlobal(QCursor::pos()), newZoom);
         return true;
     }
     default:

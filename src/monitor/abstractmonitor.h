@@ -10,6 +10,7 @@
 
 #include <QImage>
 #include <QObject>
+#include <QPointF>
 #include <QWidget>
 
 class MonitorManager;
@@ -75,7 +76,13 @@ public Q_SLOTS:
     virtual void slotRewind(double speed = 0) = 0;
     virtual void slotForward(double speed = 0, bool allowNormalPlay = false) = 0;
     virtual void refreshMonitorIfActive(bool directUpdate = false) = 0;
-    virtual void slotMouseSeek(int eventDelta, uint modifiers) = 0;
+    /** @brief Apply a mouse wheel modifier action
+     *
+     *  @param eventDelta Wheel notches, positive scrolls up
+     *  @param modifiers Keyboard modifiers held during the wheel event
+     *  @param pos Wheel position, in the coordinates of the video widget scene
+     *  (that is, of @ref VideoWidget, where the zoom anchor is expressed) */
+    virtual void slotMouseSeek(int eventDelta, uint modifiers, const QPointF &pos) = 0;
     bool slotActivateMonitor();
     bool slotTemporaryActivateMonitor();
     virtual void slotSwitchFullScreen(bool minimizeOnly = false) = 0;

@@ -101,7 +101,9 @@ public:
      * */
     Q_INVOKABLE bool setPosition(int pos);
     bool setPositionAdvanced(int pos, bool noAudioScrub);
-    Q_INVOKABLE void seek(int delta, uint modifiers);
+    /** @brief Seek relative position on mouse wheel event
+     *  @param pos Wheel position, in the coordinates of the monitor scene */
+    Q_INVOKABLE void seek(int delta, uint modifiers, const QPointF &pos);
     Q_INVOKABLE QByteArray getUuid() const;
     Q_INVOKABLE void selectClip(int ix);
     Q_INVOKABLE const QPoint clipBoundary(int ix);

@@ -49,7 +49,7 @@ Item {
         acceptedButtons: Qt.NoButton
         anchors.fill: parent
         onWheel: wheel => {
-            root.controller.seek(wheel.angleDelta.x + wheel.angleDelta.y, wheel.modifiers)
+            root.controller.seek(wheel.angleDelta.x + wheel.angleDelta.y, wheel.modifiers, Qt.point(wheel.x, wheel.y))
         }
         /*onEntered: {
             controller.setWidgetKeyBinding(KI18n.i18n("TODO: This is the wonderful new trimming monitor overlay!"));

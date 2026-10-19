@@ -226,7 +226,7 @@ Item {
         hoverEnabled: true
         cursorShape: kfrContainsMouse ? Qt.PointingHandCursor : Qt.ArrowCursor
         onWheel: wheel => {
-            root.controller.seek(wheel.angleDelta.x + wheel.angleDelta.y, wheel.modifiers)
+            root.controller.seek(wheel.angleDelta.x + wheel.angleDelta.y, wheel.modifiers, Qt.point(wheel.x, wheel.y))
         }
         onDoubleClicked: {
             root.controller.addRemoveKeyframe()

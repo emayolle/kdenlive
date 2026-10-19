@@ -88,9 +88,9 @@ void MonitorProxy::setRulerHeight(int addedHeight)
     q->updateRulerHeight(addedHeight);
 }
 
-void MonitorProxy::seek(int delta, uint modifiers)
+void MonitorProxy::seek(int delta, uint modifiers, const QPointF &pos)
 {
-    Q_EMIT q->mouseSeek(delta, modifiers);
+    Q_EMIT q->mouseSeek(delta, modifiers, pos);
 }
 
 QString MonitorProxy::thumbPath(int frame) const

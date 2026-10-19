@@ -339,7 +339,7 @@ Item {
             root.controller.setWidgetKeyBinding();
         }
         onWheel: wheel => {
-            root.controller.seek(wheel.angleDelta.x + wheel.angleDelta.y, wheel.modifiers)
+            root.controller.seek(wheel.angleDelta.x + wheel.angleDelta.y, wheel.modifiers, Qt.point(wheel.x, wheel.y))
         }
     }
 
