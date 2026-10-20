@@ -519,6 +519,31 @@ bool ProjectManager::closeCurrentDocument(bool saveChanges, bool quit)
     return true;
 }
 
+bool ProjectManager::saveFileHeadless(const QString &outputFileName)
+{
+    if (!m_project || !m_activeTimelineModel) {
+        return false;
+    }
+    // Save the document properties, they hold the document version and are
+    // needed to open the project again
+    pCore->projectItemModel()->saveDocumentProperties(pCore->currentDoc()->documentProperties(), m_project->metadata());
+    pCore->projectItemModel()->saveProperty(QStringLiteral("kdenlive:docproperties.activetimeline"), m_activeTimelineModel->uuid().toString());
+
+    const QString saveFolder = QFileInfo(outputFileName).absolutePath();
+    pCore->projectItemModel()->ensureRelativeTitlerPaths(saveFolder);
+    const QString scene = projectSceneList(saveFolder).first;
+    if (!scene.contains(QLatin1String("<track "))) {
+        qCritical() << "//////  ERROR: the timeline is corrupted, not saving";
+        return false;
+    }
+    if (!m_project->saveSceneList(outputFileName, scene, true)) {
+        return false;
+    }
+    m_project->setUrl(QUrl::fromLocalFile(outputFileName));
+    m_project->setModified(false);
+    return true;
+}
+
 bool ProjectManager::saveFileAs(const QString &outputFileName, bool saveOverExistingFile, bool saveACopy)
 {
     // Disable autosave while saving

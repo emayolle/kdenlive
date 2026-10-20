@@ -201,6 +201,16 @@ public Q_SLOTS:
      * @return Whether we had success. */
     bool saveFileAs(const QString &outputFileName, bool saveOverExistingFile = true, bool saveACopy = false);
 
+    /** @brief Saves the project without the graphical interface.
+     *
+     *  Unlike saveFileAs(), this does not need a MainWindow, it can be used when
+     *  running with the --script command line option. The document properties
+     *  are saved, so that the project can be opened again.
+     *
+     *  @param outputFileName The file to save to.
+     *  @return Whether we had success. */
+    bool saveFileHeadless(const QString &outputFileName);
+
     /** @brief Close currently opened document. Returns false if something went wrong (cannot save modifications, ...). */
     bool closeCurrentDocument(bool saveChanges = true, bool quit = false);
 
