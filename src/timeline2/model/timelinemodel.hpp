@@ -211,6 +211,12 @@ public:
     /** @brief @returns true if the track is a audio track */
     Q_INVOKABLE bool isAudioTrack(int trackId) const;
 
+    /** @brief @returns the duration of a track, in frames */
+    int getTrackDuration(int trackId) const;
+
+    /** @brief @returns the ids of the clips of a track */
+    std::unordered_set<int> getTrackClipIds(int trackId) const;
+
     /** @brief @returns true if the track is a subtitle track */
     Q_INVOKABLE bool isSubtitleTrack(int trackId) const;
 

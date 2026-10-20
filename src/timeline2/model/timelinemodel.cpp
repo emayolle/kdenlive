@@ -6460,6 +6460,26 @@ bool TimelineModel::isAudioTrack(int trackId) const
     return (*it)->isAudioTrack();
 }
 
+int TimelineModel::getTrackDuration(int trackId) const
+{
+    READ_LOCK();
+    if (!isTrack(trackId)) {
+        return 0;
+    }
+    auto it = m_iteratorTable.at(trackId);
+    return (*it)->trackDuration();
+}
+
+std::unordered_set<int> TimelineModel::getTrackClipIds(int trackId) const
+{
+    READ_LOCK();
+    if (!isTrack(trackId)) {
+        return {};
+    }
+    auto it = m_iteratorTable.at(trackId);
+    return (*it)->getClipsInRange(0, -1);
+}
+
 bool TimelineModel::isSubtitleTrack(int trackId) const
 {
     return trackId == -2;
