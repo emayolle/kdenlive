@@ -207,7 +207,8 @@ std::shared_ptr<ProjectClip> ProjectClip::construct(const QString &id, const QDo
 
 ProjectClip::~ProjectClip()
 {
-    if (pCore->closing || pCore->currentDoc()->closing) {
+    // The core and the document may already be gone when the clip is destroyed
+    if (pCore && (pCore->closing || (pCore->currentDoc() && pCore->currentDoc()->closing))) {
         for (auto &p : m_audioProducers) {
             m_effectStack->removeService(p.second);
         }

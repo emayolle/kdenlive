@@ -1565,3 +1565,36 @@ TEST_CASE("FuzzBug11")
         binModel->clean();
     }
 }
+
+TEST_CASE("Destroying a bin clip after the core is gone")
+{
+    // The bin model is destroyed after the core, when the application quits.
+    // Destroying a bin clip then used to dereference the core and the document,
+    // which are already gone at that point.
+    auto binModel = pCore->projectItemModel();
+    std::shared_ptr<DocUndoStack> undoStack = std::make_shared<DocUndoStack>(nullptr);
+    KdenliveTests::resetNextId();
+    {
+        KdenliveDoc document(undoStack);
+        Mock<KdenliveDoc> docMock(document);
+        KdenliveDoc &mockedDoc = docMock.get();
+        Mock<ProjectManager> pmMock;
+        When(Method(pmMock, undoStack)).AlwaysReturn(undoStack);
+        When(Method(pmMock, cacheDir)).AlwaysReturn(QDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation)));
+        When(Method(pmMock, current)).AlwaysReturn(&mockedDoc);
+        pCore->projectManager()->testSetDocument(&mockedDoc);
+
+        const QString binId = KdenliveTests::createProducer(pCore->getProjectProfile(), "red", binModel);
+        REQUIRE(!binId.isEmpty());
+        auto clip = binModel->getClipByBinID(binId);
+        REQUIRE(clip != nullptr);
+
+        // Simulate the core being destroyed while the clip is still alive
+        mockedDoc.closing = true;
+        pCore->projectManager()->testSetDocument(nullptr);
+        // This used to crash, the clip destructor used the core and the document
+        clip.reset();
+        REQUIRE(true);
+    }
+    binModel->clean();
+}

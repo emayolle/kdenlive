@@ -109,9 +109,12 @@ void Core::finishShutdown()
 {
     if (m_monitorManager) {
         delete m_monitorManager;
+        m_monitorManager = nullptr;
     }
     if (m_projectManager) {
         delete m_projectManager;
+        // Reset the pointer, the model is destroyed later and would use it
+        m_projectManager = nullptr;
     }
     mediaUnavailable.reset();
 }
@@ -1439,6 +1442,9 @@ bool Core::hasTimelinePreview() const
 
 KdenliveDoc *Core::currentDoc()
 {
+    if (!m_projectManager) {
+        return nullptr;
+    }
     return m_projectManager->current();
 }
 
