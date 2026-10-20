@@ -1,6 +1,6 @@
- /*
-    SPDX-FileCopyrightText: 2007 Marco Gittler <g.marco@freenet.de>
-    SPDX-FileCopyrightText: 2008 Jean-Baptiste Mardelle <jb@kdenlive.org>
+/*
+   SPDX-FileCopyrightText: 2007 Marco Gittler <g.marco@freenet.de>
+   SPDX-FileCopyrightText: 2008 Jean-Baptiste Mardelle <jb@kdenlive.org>
 
 SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
@@ -16,14 +16,18 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 // Required for MacOS definition of MLT_LC_NAME
 #include "lib/localeHandling.h"
 #include "render/renderrequest.h"
+#ifdef HAVE_PYTHON
+#include "scripting/kdenliveapi.h"
+#include "scripting/pythonengine.h"
+#endif
 #include <config-kdenlive.h>
 #include <project/projectmanager.h>
 
 #include <mlt++/Mlt.h>
 
- extern "C" {
+extern "C" {
 #include <libavutil/avutil.h>
- }
+}
 
 #include <KAboutData>
 #include <KConfigGroup>
@@ -289,18 +293,19 @@ int main(int argc, char *argv[])
     KAboutData aboutData(QByteArray("kdenlive"), i18n("Kdenlive"), KDENLIVE_VERSION, i18n("An open source video editor."), KAboutLicense::GPL_V3,
                          i18n("Copyright © 2007–2025 Kdenlive authors"), otherText, QStringLiteral("https://kdenlive.org"));
     // main developers (alphabetical)
-    aboutData.addAuthor(i18n("Jean-Baptiste Mardelle"), i18n("Core team member, main developer and maintainer, MLT, and KDE SC 4 / KF5 port"), QStringLiteral("jb@kdenlive.org"));
+    aboutData.addAuthor(i18n("Jean-Baptiste Mardelle"), i18n("Core team member, main developer and maintainer, MLT, and KDE SC 4 / KF5 port"),
+                        QStringLiteral("jb@kdenlive.org"));
     // active developers with major involvement
     aboutData.addAuthor(i18n("Julius Künzel"), i18n("Core team member, feature development, packaging, bug fixing"), QStringLiteral("julius.kuenzel@kde.org"));
     aboutData.addAuthor(i18n("Vincent Pinon"), i18n("KF5 port, Windows cross-build, packaging, bug fixing"), QStringLiteral("vpinon@kde.org"));
     // other active developers (alphabetical)
-     aboutData.addAuthor(i18n("Eric Jiang"), i18n("Bug fixing and test improvements"), QStringLiteral("erjiang@alumni.iu.edu"));
+    aboutData.addAuthor(i18n("Eric Jiang"), i18n("Bug fixing and test improvements"), QStringLiteral("erjiang@alumni.iu.edu"));
     // non active developers with major improvement (alphabetical)
     aboutData.addAuthor(i18n("Simon A. Eugster"), i18n("Color scopes, decimal separator issue, bug fixing"), QStringLiteral("simon.eu@gmail.com"));
     aboutData.addAuthor(i18n("Jason Wood"), i18n("Original KDE 3 version author (not active anymore)"), QStringLiteral("jasonwood@blueyonder.co.uk"));
     // non developers (alphabetical)
     aboutData.addCredit(i18n("Farid Abdelnour"), i18n("Logo, promotion, testing"));
-    aboutData.addCredit(i18n("balooii"),  i18n("Monitor, scopes, and timeline QOL improvements"));
+    aboutData.addCredit(i18n("balooii"), i18n("Monitor, scopes, and timeline QOL improvements"));
     aboutData.addCredit(i18n("Nicolas Carion"), i18n("Code re-architecture & timeline rewrite (2019)"));
     aboutData.addCredit(i18n("Dan Dennedy"), i18n("MLT maintainer, Bug fixing, etc."));
     aboutData.addCredit(i18n("Darby Johnston"), i18n("OTIO rewrite"));
@@ -362,11 +367,18 @@ int main(int argc, char *argv[])
     QCommandLineOption debugOption(QStringLiteral("debug"), i18n("Show some development specific features in the UI, disable all exclude lists for assets."));
     parser.addOption(debugOption);
 
-    QCommandLineOption saveDebugOption(QStringLiteral("setup-report"), i18n("Save a json report about components in the given path."), QStringLiteral("reportFile"));
+    QCommandLineOption saveDebugOption(QStringLiteral("setup-report"), i18n("Save a json report about components in the given path."),
+                                       QStringLiteral("reportFile"));
     parser.addOption(saveDebugOption);
 
     QCommandLineOption verifyOption(QStringLiteral("verify-file"), i18n("Verify whether a Kdenlive project file is valid, print details, and exit."));
     parser.addOption(verifyOption);
+
+#ifdef HAVE_PYTHON
+    QCommandLineOption scriptOption(QStringLiteral("script"), i18n("Run a python script against the project, without opening the interface."),
+                                    QStringLiteral("script"));
+    parser.addOption(scriptOption);
+#endif
 
     parser.addPositionalArgument(QStringLiteral("file"), i18n("Kdenlive document to open."));
     parser.addPositionalArgument(QStringLiteral("rendering"), i18n("Output file for rendered video."));
@@ -476,6 +488,43 @@ int main(int argc, char *argv[])
         app.processEvents();
         return EXIT_SUCCESS;
     }
+
+#ifdef HAVE_PYTHON
+    if (parser.isSet(scriptOption)) {
+        // Resolve the path now, the current directory changes when the project is loaded
+        const QString scriptFile = QFileInfo(parser.value(scriptOption)).absoluteFilePath();
+        if (!QFileInfo::exists(scriptFile)) {
+            qCritical() << "Script file does not exist:" << scriptFile;
+            return EXIT_FAILURE;
+        }
+        if (!Core::build(packageType, true)) {
+            return EXIT_FAILURE;
+        }
+        // The script works on a project, open the one given on the command line
+        pCore->initHeadless(app.url);
+        app.processEvents();
+
+        if (!PythonEngine::instance().initialize()) {
+            qCritical() << "Could not start the python interpreter.";
+            return EXIT_FAILURE;
+        }
+        KdenliveApi api(pCore.get());
+        PythonEngine::instance().setApi(&api);
+        QString error;
+        const bool success = PythonEngine::instance().runFile(scriptFile, &error);
+        if (!success) {
+            qCritical() << "Script failed:" << error;
+            Core::clean();
+            app.processEvents();
+            return EXIT_FAILURE;
+        }
+        pCore->projectManager()->closeCurrentDocument(false, false);
+        app.processEvents();
+        Core::clean();
+        app.processEvents();
+        return EXIT_SUCCESS;
+    }
+#endif
 
     if (parser.isSet(renderOption)) {
         if (app.url.isEmpty()) {
