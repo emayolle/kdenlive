@@ -13,6 +13,9 @@
 
 #include "core.h"
 
+#include <QFile>
+#include <QTemporaryDir>
+
 using namespace fakeit;
 
 TEST_CASE("Scripting api", "[Scripting]")
@@ -231,6 +234,44 @@ TEST_CASE("Scripting api", "[Scripting]")
 
         // And can be triggered, the api is still valid
         REQUIRE(PythonEngine::instance().triggerAction(QStringLiteral("scriptingtest")));
+    }
+
+    SECTION("Run a script file")
+    {
+        REQUIRE(PythonEngine::instance().initialize());
+        PythonEngine::instance().setApi(pCore.get());
+
+        // Write a script in a file, this is how the scripts of the Scripts menu are run
+        QTemporaryDir directory;
+        REQUIRE(directory.isValid());
+        const QString path = directory.path() + QStringLiteral("/script.py");
+        QFile file(path);
+        REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        file.write("import kdenlive\n"
+                   "def action(project):\n"
+                   "    project.tracks()\n"
+                   "kdenlive.register_action('filetest', 'File test', action)\n");
+        file.close();
+
+        QString error;
+        const bool success = PythonEngine::instance().runFile(path, &error);
+        INFO("The script failed with: " << error.toStdString());
+        REQUIRE(success);
+        REQUIRE(error.isEmpty());
+        REQUIRE(PythonEngine::instance().actionIds().contains(QStringLiteral("filetest")));
+
+        // A script that fails reports its error
+        const QString failingPath = directory.path() + QStringLiteral("/failing.py");
+        QFile failingFile(failingPath);
+        REQUIRE(failingFile.open(QIODevice::WriteOnly | QIODevice::Text));
+        failingFile.write("raise RuntimeError('the script failed')\n");
+        failingFile.close();
+
+        error.clear();
+        REQUIRE(!PythonEngine::instance().runFile(failingPath, &error));
+        REQUIRE(error.contains(QStringLiteral("the script failed")));
+        // The error tells where the script failed
+        REQUIRE(error.contains(QStringLiteral("failing.py")));
     }
 
     pCore->projectManager()->closeCurrentDocument(false, false);

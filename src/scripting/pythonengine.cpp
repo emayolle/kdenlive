@@ -41,6 +41,22 @@ PyObject *fromQString(const QString &value)
     return PyUnicode_FromString(value.toUtf8().constData());
 }
 
+/** @brief Compiles and runs a script.
+ *
+ *  The code is compiled with a name, so that the traceback of a failed script
+ *  shows the file and the line where it failed.
+ */
+PyObject *runScript(const QByteArray &code, const QString &name, PyObject *globals)
+{
+    PyObject *compiled = Py_CompileString(code.constData(), name.toUtf8().constData(), Py_file_input);
+    if (!compiled) {
+        return nullptr;
+    }
+    PyObject *result = PyEval_EvalCode(compiled, globals, globals);
+    Py_DECREF(compiled);
+    return result;
+}
+
 /** @brief Formats the traceback of a failed script.
  *
  *  The traceback tells where the script failed, it is the most useful
@@ -851,12 +867,7 @@ bool PythonEngine::runString(const QString &code, const QString &name, QString *
     const QByteArray utf8Code = code.toUtf8();
     // Compile the code with a name, so that the traceback of a failed script
     // shows the file and the line where it failed
-    PyObject *compiled = Py_CompileString(utf8Code.constData(), name.toUtf8().constData(), Py_file_input);
-    PyObject *result = nullptr;
-    if (compiled) {
-        result = PyEval_EvalCode(compiled, globals, globals);
-        Py_DECREF(compiled);
-    }
+    PyObject *result = runScript(utf8Code, name, globals);
     bool ok = result != nullptr;
     if (!ok && errorOutput) {
         PyObject *type = nullptr;
@@ -939,7 +950,7 @@ bool PythonEngine::importFile(const QString &path, QString *errorOutput)
     PyDict_SetItemString(globals, "__name__", fromQString(moduleName));
 
     const QByteArray utf8Code = code.toUtf8();
-    PyObject *result = PyRun_String(utf8Code.constData(), Py_file_input, globals, globals);
+    PyObject *result = runScript(utf8Code, path, globals);
     bool ok = result != nullptr;
     if (ok) {
         // A script that defines PLUGIN_ENTRY registers its actions there, this
@@ -972,13 +983,9 @@ bool PythonEngine::importFile(const QString &path, QString *errorOutput)
             }
         }
         if (traceback) {
-            PyObject *tbStr = PyObject_Str(traceback);
-            if (tbStr) {
-                const char *utf8 = PyUnicode_AsUTF8(tbStr);
-                if (utf8) {
-                    *errorOutput += QStringLiteral("\n") + QString::fromUtf8(utf8);
-                }
-                Py_DECREF(tbStr);
+            const QString frames = formatTraceback(traceback);
+            if (!frames.isEmpty()) {
+                *errorOutput += QLatin1Char('\n') + frames;
             }
         }
         Py_XDECREF(type);
