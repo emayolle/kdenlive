@@ -60,6 +60,17 @@ add_subdirectory(pythoninterfaces)
 add_subdirectory(render)
 add_subdirectory(renderpresets)
 add_subdirectory(scopes)
+
+# The scripting API embeds the python interpreter, it is optional.
+find_package(Python3 COMPONENTS Development.Embed)
+if(Python3_FOUND)
+    message(STATUS "Found Python3: ${Python3_EXECUTABLE} (version ${Python3_VERSION})")
+    set(kdenlive_SCRIPTING_FOUND TRUE)
+else()
+    message(STATUS "Python development files not found, the scripting API will not be built")
+endif()
+
+add_subdirectory(scripting)
 add_subdirectory(timeline2)
 add_subdirectory(titler)
 add_subdirectory(transitions)
@@ -291,6 +302,14 @@ target_link_libraries(kdenliveLib PUBLIC
     ${CMAKE_THREAD_LIBS_INIT}
     kiss_fft
     )
+
+# The scripting API embeds the python interpreter, it is optional
+if(kdenlive_SCRIPTING_FOUND)
+    target_link_libraries(kdenliveLib PUBLIC
+        Python3::Python
+        )
+    target_compile_definitions(kdenliveLib PUBLIC HAVE_PYTHON)
+endif()
 
 if(KF6_VERSION VERSION_GREATER_EQUAL "6.8.0")
   target_link_libraries(kdenliveLib PUBLIC KF${KF_MAJOR}::I18nQml)
