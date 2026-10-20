@@ -761,13 +761,21 @@ bool KdenliveDoc::saveSceneList(const QString &path, const QString &scene, bool 
 
         KIO::FileCopyJob *copyjob = KIO::file_copy(QUrl::fromLocalFile(path), QUrl::fromLocalFile(backupFile));
         if (copyjob->exec()) {
-            KMessageBox::information(QApplication::activeWindow(), message);
             m_documentOpenStatus = CleanProject;
+            if (pCore->window()) {
+                KMessageBox::information(QApplication::activeWindow(), message);
+            } else {
+                // There is no interface to show the message in
+                qInfo() << message;
+            }
         } else {
-            KMessageBox::information(
-                QApplication::activeWindow(),
-                i18n("Your project file was upgraded to the latest Kdenlive document version, but it was not possible to create the backup copy %1.",
-                     backupFile));
+            const QString error = i18n(
+                "Your project file was upgraded to the latest Kdenlive document version, but it was not possible to create the backup copy %1.", backupFile);
+            if (pCore->window()) {
+                KMessageBox::information(QApplication::activeWindow(), error);
+            } else {
+                qWarning() << error;
+            }
         }
     }
     QSaveFile file(path);

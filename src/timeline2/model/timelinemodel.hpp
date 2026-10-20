@@ -113,6 +113,7 @@ public:
 
     bool isClosed{true};
     Q_PROPERTY(QString visibleSequenceName MEMBER m_visibleSequenceName NOTIFY visibleSequenceNameChanged)
+    Q_PROPERTY(int cursorPosition READ cursorPosition WRITE setCursorPosition NOTIFY cursorPositionChanged)
 
     /// Two level model: tracks and clips on track
     enum {
@@ -963,6 +964,14 @@ public:
     /** @brief Returns a set containing all the items in the selection */
     std::unordered_set<int> getCurrentSelection() const;
 
+    /** @brief The position of the timeline cursor, in frames
+     *
+     *  The cursor is kept here so that it is available even when there is no
+     *  graphical interface, the monitor proxy is kept in sync with it.
+     */
+    int cursorPosition() const;
+    Q_INVOKABLE void setCursorPosition(int position);
+
     /** @brief Do some cleanup before closing */
     void prepareClose(bool softDelete = false);
     /** @brief Import project's master effects */
@@ -1086,6 +1095,8 @@ protected:
     bool m_blockRefresh;
 
 Q_SIGNALS:
+    /** @brief The position of the timeline cursor changed */
+    void cursorPositionChanged(int position);
     /** @brief signal triggered by clearAssetView */
     void requestClearAssetView(int);
     void requestMonitorRefresh();
@@ -1156,6 +1167,8 @@ protected:
      *  (in that case we cannot further group it because the selection would have only one child, which is prohibited by design) */
     std::unordered_set<int> m_currentSelection;
     int m_selectedMix = -1;
+    /// The position of the timeline cursor, in frames
+    int m_cursorPosition{0};
 
     /// The index of the temporary overlay track in tractor, or -1 if not connected
     int m_overlayTrackCount;

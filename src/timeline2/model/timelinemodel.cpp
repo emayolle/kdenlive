@@ -1978,9 +1978,13 @@ int TimelineModel::promptAudioTrackCreation(int missingTracks, int streamCount, 
         }
     }
 
-    int tracksToCreate = AutoTrackCreationDialog::getTracksToCreate(qApp->activeWindow(), missingTracks, tracksToInsertBeforeMirror, streamCount);
-    if (tracksToCreate < 0) {
-        return -1;
+    int tracksToCreate = missingTracks;
+    if (pCore->window()) {
+        // Ask the user how many tracks to create, this needs the interface
+        tracksToCreate = AutoTrackCreationDialog::getTracksToCreate(qApp->activeWindow(), missingTracks, tracksToInsertBeforeMirror, streamCount);
+        if (tracksToCreate < 0) {
+            return -1;
+        }
     }
 
     if (!isTrack(trackId)) {
@@ -7572,6 +7576,24 @@ void TimelineModel::requestAddToSelection(int itemId, bool clear, bool singleSel
     if (selection.insert(itemId).second) {
         requestSetSelection(selection);
     }
+}
+
+int TimelineModel::cursorPosition() const
+{
+    READ_LOCK();
+    return m_cursorPosition;
+}
+
+void TimelineModel::setCursorPosition(int position)
+{
+    {
+        QWriteLocker locker(&m_lock);
+        if (m_cursorPosition == position) {
+            return;
+        }
+        m_cursorPosition = position;
+    }
+    Q_EMIT cursorPositionChanged(position);
 }
 
 void TimelineModel::requestRemoveFromSelection(int itemId)

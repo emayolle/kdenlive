@@ -14,6 +14,7 @@
 #include "doc/kdenlivedoc.h"
 #include "profiles/profilemodel.hpp"
 #include "project/projectmanager.h"
+#include "timeline2/model/timelinefunctions.hpp"
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "timeline2/model/trackmodel.hpp"
 
@@ -248,7 +249,8 @@ QString KdenliveApi::addSubClip(const QString &binId, int in, int out)
     QString id;
     std::function<bool(void)> undo = []() { return true; };
     std::function<bool(void)> redo = []() { return true; };
-    if (!model->requestAddBinSubClip(id, in, out, {}, QStringLiteral("-1"), undo, redo)) {
+    // The parent is the clip the fragment is taken from
+    if (!model->requestAddBinSubClip(id, in, out, {}, binId, undo, redo)) {
         setError(i18n("Could not create subclip of %1", binId));
         return {};
     }
@@ -358,25 +360,36 @@ int KdenliveApi::insertClip(const QString &binId, int trackId, int position, con
         setError(i18n("No such track: %1", trackId));
         return -1;
     }
-    // The edit mode decides what happens when the position is already taken
-    const TimelineMode::EditMode previousMode = model->editMode();
-    if (mode == QLatin1String("normal")) {
-        model->setEditMode(TimelineMode::NormalEdit);
-    } else if (mode == QLatin1String("insert")) {
-        model->setEditMode(TimelineMode::InsertEdit);
-    } else {
-        model->setEditMode(TimelineMode::OverwriteEdit);
+    auto clip = m_core->projectItemModel()->getClipByBinID(binId);
+    if (!clip) {
+        setError(i18n("No such bin clip: %1", binId));
+        return -1;
     }
-    int id = -1;
+    // The zone of the clip is inserted, the whole clip when it has no zone
+    QPoint zone = clip->zone();
+    if (zone.y() < zone.x()) {
+        zone = QPoint(0, clip->frameDuration() - 1);
+    }
+    // In overwrite mode the content at the position is replaced, in insert mode
+    // it is pushed to the right
+    const bool overwrite = mode != QLatin1String("insert");
+
+    std::function<bool(void)> undo = []() { return true; };
+    std::function<bool(void)> redo = []() { return true; };
     // useTargets is false so the clip lands on the requested track, not on the
     // current audio/video targets
-    const bool inserted = model->requestClipInsertion(binId, trackId, position, id, true, false, false);
-    model->setEditMode(previousMode);
-    if (!inserted) {
+    if (!TimelineFunctions::insertZone(model, {trackId}, binId, position, zone, overwrite, false, undo, redo)) {
         setError(i18n("Could not insert clip %1", binId));
         return -1;
     }
-    return id;
+    // Find the clip that was inserted
+    const auto clips = this->clips(trackId);
+    for (const auto &inserted : clips) {
+        if (inserted.binId == binId && inserted.position == position) {
+            return inserted.id;
+        }
+    }
+    return -1;
 }
 
 bool KdenliveApi::removeClip(int trackId, int position)
@@ -407,18 +420,20 @@ int KdenliveApi::trackDuration(int trackId) const
 
 int KdenliveApi::playheadPosition() const
 {
-    if (!m_core) {
+    if (!hasProject()) {
         return 0;
     }
-    return m_core->getMonitorPosition();
+    // The cursor is held by the timeline model, it is also available when
+    // there is no graphical interface
+    return m_core->projectManager()->getTimeline()->cursorPosition();
 }
 
 void KdenliveApi::setPlayheadPosition(int position)
 {
-    if (!m_core) {
+    if (!hasProject()) {
         return;
     }
-    m_core->seekMonitor(Kdenlive::ProjectMonitor, position);
+    m_core->projectManager()->getTimeline()->setCursorPosition(position);
 }
 
 bool KdenliveApi::save(const QString &path)

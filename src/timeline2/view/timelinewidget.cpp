@@ -301,6 +301,10 @@ void TimelineWidget::setModel(const std::shared_ptr<TimelineItemModel> &model, M
     connect(rootObject(), SIGNAL(zoomOut(bool)), this, SIGNAL(zoomOut(bool)));
     connect(rootObject(), SIGNAL(processingDrag(bool)), this, SIGNAL(processingDrag(bool)));
     connect(&timelineController, &TimelineController::seeked, proxy, &MonitorProxy::setPosition);
+    // Keep the model and the monitor proxy in sync, the model holds the cursor
+    // position so that it is also available without the graphical interface
+    connect(proxy, &MonitorProxy::positionChanged, model.get(), [model = model.get()](int position) { model->setCursorPosition(position); });
+    connect(model.get(), &TimelineItemModel::cursorPositionChanged, proxy, &MonitorProxy::setPosition);
     connect(rootObject(), SIGNAL(showClipMenu(int)), this, SLOT(showClipMenu(int)));
     connect(rootObject(), SIGNAL(showMixMenu(int)), this, SLOT(showMixMenu(int)));
     connect(rootObject(), SIGNAL(showCompositionMenu()), this, SLOT(showCompositionMenu()));
