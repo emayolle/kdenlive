@@ -180,7 +180,7 @@ TEST_CASE("Scripting api", "[Scripting]")
     SECTION("Run a python script")
     {
         REQUIRE(PythonEngine::instance().initialize());
-        PythonEngine::instance().setApi(&api);
+        PythonEngine::instance().setApi(pCore.get());
 
         // The script fails with an assertion, the error is reported
         QString error;
@@ -207,6 +207,30 @@ TEST_CASE("Scripting api", "[Scripting]")
         // The script did edit the project
         const auto tracks = api.tracks();
         REQUIRE(std::any_of(tracks.cbegin(), tracks.cend(), [](const ScriptTrack &track) { return track.name == QStringLiteral("Script track"); }));
+    }
+
+    SECTION("Register an action")
+    {
+        REQUIRE(PythonEngine::instance().initialize());
+        PythonEngine::instance().setApi(pCore.get());
+
+        // A script registers an action, the callback gets the project
+        const QString script = QStringLiteral("import kdenlive\n"
+                                              "def action(project):\n"
+                                              "    project.tracks()\n"
+                                              "kdenlive.register_action('scriptingtest', 'Scripting test', action)\n");
+        QString error;
+        const bool success = PythonEngine::instance().runString(script, "script", &error);
+        INFO("The script failed with: " << error.toStdString());
+        REQUIRE(success);
+        REQUIRE(error.isEmpty());
+
+        // The action is registered
+        REQUIRE(PythonEngine::instance().actionIds().contains(QStringLiteral("scriptingtest")));
+        REQUIRE(PythonEngine::instance().actionLabel(QStringLiteral("scriptingtest")) == QStringLiteral("Scripting test"));
+
+        // And can be triggered, the api is still valid
+        REQUIRE(PythonEngine::instance().triggerAction(QStringLiteral("scriptingtest")));
     }
 
     pCore->projectManager()->closeCurrentDocument(false, false);

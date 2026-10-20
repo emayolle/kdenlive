@@ -763,6 +763,8 @@ class PythonEngine::Private
 {
 public:
     bool initialized{false};
+    // The engine owns the api, the scripts can be run at any time
+    std::unique_ptr<KdenliveApi> api;
 };
 
 PythonEngine::PythonEngine(QObject *parent)
@@ -830,9 +832,10 @@ bool PythonEngine::isInitialized() const
     return d->initialized;
 }
 
-void PythonEngine::setApi(KdenliveApi *api)
+void PythonEngine::setApi(Core *core)
 {
-    s_api = api;
+    d->api = std::make_unique<KdenliveApi>(core);
+    s_api = d->api.get();
 }
 
 bool PythonEngine::runString(const QString &code, const QString &name, QString *errorOutput)

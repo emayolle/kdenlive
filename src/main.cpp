@@ -509,8 +509,7 @@ int main(int argc, char *argv[])
             qCritical() << "Could not start the python interpreter.";
             return EXIT_FAILURE;
         }
-        KdenliveApi api(pCore.get());
-        PythonEngine::instance().setApi(&api);
+        PythonEngine::instance().setApi(pCore.get());
         // The plugins are loaded first, the script can use the actions they registered
         ScriptManager::instance().loadPlugins();
         QString error;

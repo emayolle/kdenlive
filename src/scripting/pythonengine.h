@@ -10,6 +10,7 @@
 #include <QString>
 #include <QStringList>
 
+class Core;
 class KdenliveApi;
 
 /**
@@ -65,8 +66,15 @@ public:
      */
     bool importFile(const QString &path, QString *errorOutput = nullptr);
 
-    /** @brief The api exposed to the scripts, may be null. */
-    void setApi(KdenliveApi *api);
+    /**
+     * @brief Sets the project the scripts work on.
+     *
+     * The engine owns the api, it must stay alive as long as the scripts can
+     * be run.
+     *
+     * @param core The core of the running project.
+     */
+    void setApi(Core *core);
 
     /**
      * @brief Registers an action, callable from a script.

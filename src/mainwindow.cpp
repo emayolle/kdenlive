@@ -2647,8 +2647,7 @@ void MainWindow::loadScripts()
         }
     }
     // The scripts work on the project, so they are loaded once it is ready
-    KdenliveApi api(pCore.get());
-    PythonEngine::instance().setApi(&api);
+    PythonEngine::instance().setApi(pCore.get());
     ScriptManager::instance().loadPlugins();
 
     // Show the actions the scripts registered
