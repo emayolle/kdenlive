@@ -41,6 +41,45 @@ PyObject *fromQString(const QString &value)
     return PyUnicode_FromString(value.toUtf8().constData());
 }
 
+/** @brief Formats the traceback of a failed script.
+ *
+ *  The traceback tells where the script failed, it is the most useful
+ *  information for the user.
+ */
+QString formatTraceback(PyObject *traceback)
+{
+    QString result;
+    if (!traceback) {
+        return result;
+    }
+    PyObject *module = PyImport_ImportModule("traceback");
+    if (!module) {
+        PyErr_Clear();
+        return result;
+    }
+    PyObject *lines = PyObject_CallMethod(module, "format_tb", "O", traceback);
+    if (lines) {
+        if (PyList_Check(lines)) {
+            const Py_ssize_t count = PyList_Size(lines);
+            for (Py_ssize_t i = 0; i < count; i++) {
+                PyObject *line = PyList_GetItem(lines, i);
+                if (!line) {
+                    continue;
+                }
+                const char *utf8 = PyUnicode_AsUTF8(line);
+                if (utf8) {
+                    result += QString::fromUtf8(utf8);
+                }
+            }
+        }
+        Py_DECREF(lines);
+    } else {
+        PyErr_Clear();
+    }
+    Py_DECREF(module);
+    return result;
+}
+
 /** @brief Converts a map of variants to a python dictionary. */
 PyObject *fromVariantMap(const QVariantMap &values)
 {
@@ -807,7 +846,14 @@ bool PythonEngine::runString(const QString &code, const QString &name, QString *
     PyGILState_STATE gil = PyGILState_Ensure();
     PyObject *globals = createScriptNamespace();
     const QByteArray utf8Code = code.toUtf8();
-    PyObject *result = PyRun_String(utf8Code.constData(), Py_file_input, globals, globals);
+    // Compile the code with a name, so that the traceback of a failed script
+    // shows the file and the line where it failed
+    PyObject *compiled = Py_CompileString(utf8Code.constData(), name.toUtf8().constData(), Py_file_input);
+    PyObject *result = nullptr;
+    if (compiled) {
+        result = PyEval_EvalCode(compiled, globals, globals);
+        Py_DECREF(compiled);
+    }
     bool ok = result != nullptr;
     if (!ok && errorOutput) {
         PyObject *type = nullptr;
@@ -815,8 +861,21 @@ bool PythonEngine::runString(const QString &code, const QString &name, QString *
         PyObject *traceback = nullptr;
         PyErr_Fetch(&type, &value, &traceback);
         PyErr_NormalizeException(&type, &value, &traceback);
+        // The exception is not a string, get its text representation
         if (value) {
-            *errorOutput = QString::fromUtf8(PyUnicode_AsUTF8(value) ? PyUnicode_AsUTF8(value) : "");
+            PyObject *text = PyObject_Str(value);
+            if (text) {
+                const char *utf8 = PyUnicode_AsUTF8(text);
+                if (utf8) {
+                    *errorOutput = QString::fromUtf8(utf8);
+                }
+                Py_DECREF(text);
+            }
+        }
+        // Add the traceback, it tells where the script failed
+        const QString frames = formatTraceback(traceback);
+        if (!frames.isEmpty()) {
+            *errorOutput += QLatin1Char('\n') + frames;
         }
         if (type) {
             Py_DECREF(type);

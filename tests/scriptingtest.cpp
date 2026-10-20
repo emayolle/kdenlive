@@ -9,6 +9,7 @@
 #include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
 #include "scripting/kdenliveapi.h"
+#include "scripting/pythonengine.h"
 
 #include "core.h"
 
@@ -174,6 +175,38 @@ TEST_CASE("Scripting api", "[Scripting]")
         // An unknown clip cannot be mixed
         REQUIRE(api.mixClip(9999) == false);
         REQUIRE(!api.lastError().isEmpty());
+    }
+
+    SECTION("Run a python script")
+    {
+        REQUIRE(PythonEngine::instance().initialize());
+        PythonEngine::instance().setApi(&api);
+
+        // The script fails with an assertion, the error is reported
+        QString error;
+        REQUIRE(!PythonEngine::instance().runString("import kdenlive\nassert False, 'the script failed'\n", "failing script", &error));
+        REQUIRE(!error.isEmpty());
+
+        // A script can edit the project
+        const QString script = QStringLiteral("import kdenlive\n"
+                                              "project = kdenlive.project()\n"
+                                              "track_id = project.add_track('Script track', False)\n"
+                                              "assert track_id > -1\n"
+                                              "project.set_track_active(track_id, True)\n"
+                                              "clips = project.timeline_clips(track_id)\n"
+                                              "assert clips == []\n"
+                                              "tracks = project.tracks()\n"
+                                              "assert any(track['name'] == 'Script track' for track in tracks)\n"
+                                              "assert project.error == ''\n");
+        error.clear();
+        const bool success = PythonEngine::instance().runString(script, "script", &error);
+        INFO("The script failed with: " << error.toStdString());
+        REQUIRE(success);
+        REQUIRE(error.isEmpty());
+
+        // The script did edit the project
+        const auto tracks = api.tracks();
+        REQUIRE(std::any_of(tracks.cbegin(), tracks.cend(), [](const ScriptTrack &track) { return track.name == QStringLiteral("Script track"); }));
     }
 
     pCore->projectManager()->closeCurrentDocument(false, false);
