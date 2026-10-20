@@ -237,6 +237,11 @@
       <Action name="slip_tool"/>
       <Action name="ripple_tool"/>
       <Action name="multicam_tool"/>
+      <Separator/>
+      <Menu name="scripts_menu">
+        <text>Scripts</text>
+        <ActionList name="script_actions"/>
+      </Menu>
     </Menu>
     <Menu name="monitor">
       <text>Monitor</text>

@@ -68,6 +68,11 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "timeline2/view/timelinecontroller.h"
 #include "timeline2/view/timelinetabs.hpp"
 #include "timeline2/view/timelinewidget.h"
+#ifdef HAVE_PYTHON
+#include "scripting/kdenliveapi.h"
+#include "scripting/pythonengine.h"
+#include "scripting/scriptmanager.h"
+#endif
 #include "titler/titlewidget.h"
 #include "transitions/transitionlist/view/transitionlistwidget.hpp"
 #include "transitions/transitionsrepository.hpp"
@@ -596,8 +601,8 @@ void MainWindow::init()
         }
     }
 
-    // Only start saving config once all GUI setup is done.
-    connect(pCore.get(), &Core::GUISetupDone, this, &MainWindow::finishUiSetup, Qt::DirectConnection);
+    // The connection to GUISetupDone is done in Core::initGUI, before the project
+    // is opened, as the signal is emitted while it is loaded
 
     LocaleHandling::resetLocale();
 
@@ -754,6 +759,8 @@ void MainWindow::finishUiSetup()
     pCore->restoreLayout();
     Q_EMIT pCore->closeSplash();
     setAutoSaveSettings();
+    // The scripts work on the project, they are loaded once it is ready
+    loadScripts();
     QObject::disconnect(pCore.get(), &Core::GUISetupDone, this, nullptr);
     // This should connect only after splash is done
     connect(pCore.get(), &Core::loadingMessageNewStage, this, [&](const QString &message, int max = -1) {
@@ -2628,6 +2635,29 @@ void MainWindow::slotUpdateTimelineView(QAction *action)
     int viewMode = action->data().toInt();
     KdenliveSettings::setAudiotracksbelow(viewMode);
     getCurrentTimeline()->model()->_resetView();
+}
+
+void MainWindow::loadScripts()
+{
+#ifdef HAVE_PYTHON
+    if (!PythonEngine::instance().isInitialized()) {
+        if (!PythonEngine::instance().initialize()) {
+            qWarning() << "Could not start the python interpreter, the scripts are not available";
+            return;
+        }
+    }
+    // The scripts work on the project, so they are loaded once it is ready
+    KdenliveApi api(pCore.get());
+    PythonEngine::instance().setApi(&api);
+    ScriptManager::instance().loadPlugins();
+
+    // Show the actions the scripts registered
+    unplugActionList(QStringLiteral("script_actions"));
+    const auto actions = ScriptManager::instance().buildScriptActions(m_scriptActions);
+    if (!actions.isEmpty()) {
+        plugActionList(QStringLiteral("script_actions"), actions);
+    }
+#endif
 }
 
 void MainWindow::loadClipActions()

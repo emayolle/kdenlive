@@ -434,6 +434,9 @@ void Core::initGUI(const QString &MltPath, const QUrl &Url, const QStringList &c
     connect(m_projectItemModel.get(), &QAbstractItemModel::dataChanged, m_mainWindow->activeBin(), &Bin::slotItemEdited);
 
     m_monitorManager = new MonitorManager(this);
+    // The interface setup must be connected before the project is opened, the
+    // signal is emitted while the project is loaded
+    connect(this, &Core::GUISetupDone, m_mainWindow, &MainWindow::finishUiSetup, Qt::DirectConnection);
     projectManager()->init(Url, clipsToLoad);
     m_mainWindow->init();
 

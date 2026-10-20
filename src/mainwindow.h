@@ -298,6 +298,7 @@ private:
 
     KActionCategory *m_effectActions;
     KActionCategory *m_transitionActions;
+    KActionCategory *m_scriptActions;
     QMenu *m_effectsMenu{nullptr};
     QMenu *m_transitionsMenu{nullptr};
     QMenu *m_timelineContextMenu{nullptr};
@@ -372,6 +373,8 @@ private:
     QStringList m_pluginFileNames;
     void buildDynamicActions();
     void loadClipActions();
+    /** @brief Loads the python scripts and shows the actions they registered. */
+    void loadScripts();
     void loadContainerActions();
 
     QTime m_timer;
@@ -455,6 +458,8 @@ public Q_SLOTS:
     void slotNormalizeAudioChannel(bool normalize);
     /** @brief Recursively calculate folder size */
     KIO::filesize_t fetchFolderSize(const QString path);
+    /** @brief Process a few last things as soon as ui is built */
+    void finishUiSetup();
 
 private Q_SLOTS:
     /** @brief Shows the shortcut dialog. */
@@ -472,8 +477,6 @@ private Q_SLOTS:
     void slotRenderProject();
     void slotStopRenderProject();
     void slotFullScreen();
-    /** @brief Process a few last things as soon as ui is built */
-    void finishUiSetup();
     /** @brief Close Kdenlive and try to restart it */
     void slotRestart(bool clean = false);
 

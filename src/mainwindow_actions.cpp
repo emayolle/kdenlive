@@ -585,6 +585,9 @@ void MainWindow::setupActions()
     // addAction(QStringLiteral("roll_tool"), m_buttonRollTool, QKeySequence(), toolsActionCategory);
     addAction(QStringLiteral("slip_tool"), m_buttonSlipTool, {}, toolsActionCategory);
     addAction(QStringLiteral("multicam_tool"), m_buttonMulticamTool, {}, toolsActionCategory);
+
+    // The actions the scripts register are shown in the Scripts menu
+    m_scriptActions = new KActionCategory(i18n("Scripts"), actionCollection());
     // addAction(QStringLiteral("slide_tool"), m_buttonSlideTool);
 
     addAction(QStringLiteral("automatic_transition"), m_buttonTimelineTags);

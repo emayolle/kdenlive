@@ -19,6 +19,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #ifdef HAVE_PYTHON
 #include "scripting/kdenliveapi.h"
 #include "scripting/pythonengine.h"
+#include "scripting/scriptmanager.h"
 #endif
 #include <config-kdenlive.h>
 #include <project/projectmanager.h>
@@ -510,6 +511,8 @@ int main(int argc, char *argv[])
         }
         KdenliveApi api(pCore.get());
         PythonEngine::instance().setApi(&api);
+        // The plugins are loaded first, the script can use the actions they registered
+        ScriptManager::instance().loadPlugins();
         QString error;
         const bool success = PythonEngine::instance().runFile(scriptFile, &error);
         if (!success) {
