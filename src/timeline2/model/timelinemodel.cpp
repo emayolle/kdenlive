@@ -7584,6 +7584,46 @@ int TimelineModel::cursorPosition() const
     return m_cursorPosition;
 }
 
+QVariantMap TimelineModel::clipMixInfo(int clipId) const
+{
+    QVariantMap result;
+    READ_LOCK();
+    if (!isClip(clipId)) {
+        return result;
+    }
+    const int trackId = getItemTrackId(clipId);
+    if (trackId < 0) {
+        return result;
+    }
+    const auto track = getTrackById_const(trackId);
+    if (!track) {
+        return result;
+    }
+    const auto mixInfo = track->getMixInfo(clipId);
+    // The mix of a clip is either at its start or at its end
+    const bool hasStart = mixInfo.first.firstClipId > -1;
+    const bool hasEnd = mixInfo.second.firstClipId > -1;
+    if (!hasStart && !hasEnd) {
+        return result;
+    }
+    result.insert(QStringLiteral("has_start_mix"), hasStart);
+    result.insert(QStringLiteral("has_end_mix"), hasEnd);
+    if (hasEnd) {
+        // The mix is at the end of the clip, the other clip is the next one
+        const int otherClipId = mixInfo.second.secondClipId;
+        result.insert(QStringLiteral("other_clip_id"), otherClipId);
+        // The transition of the mix is stored on the second clip of the mix
+        if (otherClipId > -1 && track->hasStartMix(otherClipId)) {
+            result.insert(QStringLiteral("duration"), track->getMixDuration(otherClipId));
+        }
+    } else {
+        // The mix is at the start of the clip, the other clip is the previous one
+        result.insert(QStringLiteral("other_clip_id"), mixInfo.first.firstClipId);
+        result.insert(QStringLiteral("duration"), track->getMixDuration(clipId));
+    }
+    return result;
+}
+
 void TimelineModel::setCursorPosition(int position)
 {
     {

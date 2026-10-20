@@ -12,6 +12,7 @@
 
 #include <KLocalizedString>
 #include <QDir>
+#include <QVariantMap>
 
 #include <QFileInfo>
 #include <QStandardPaths>
@@ -38,6 +39,36 @@ QString toQString(PyObject *object)
 PyObject *fromQString(const QString &value)
 {
     return PyUnicode_FromString(value.toUtf8().constData());
+}
+
+/** @brief Converts a map of variants to a python dictionary. */
+PyObject *fromVariantMap(const QVariantMap &values)
+{
+    PyObject *dict = PyDict_New();
+    if (!dict) {
+        return nullptr;
+    }
+    for (auto it = values.constBegin(); it != values.constEnd(); ++it) {
+        PyObject *item = nullptr;
+        const int type = it.value().typeId();
+        if (type == QMetaType::Bool) {
+            item = PyBool_FromLong(it.value().toBool() ? 1 : 0);
+        } else if (type == QMetaType::Int || type == QMetaType::UInt || type == QMetaType::LongLong || type == QMetaType::Long) {
+            item = PyLong_FromLongLong(it.value().toLongLong());
+        } else if (type == QMetaType::Double || type == QMetaType::Float) {
+            item = PyFloat_FromDouble(it.value().toDouble());
+        } else if (type == QMetaType::QString) {
+            item = fromQString(it.value().toString());
+        } else {
+            item = Py_None;
+            Py_INCREF(item);
+        }
+        if (item) {
+            PyDict_SetItemString(dict, it.key().toUtf8().constData(), item);
+            Py_DECREF(item);
+        }
+    }
+    return dict;
 }
 
 /**
@@ -191,6 +222,7 @@ PyObject *projectBinClips(PyObject *self, PyObject *)
             {QStringLiteral("producer"), fromQString(clip.producer)},
             {QStringLiteral("duration"), PyLong_FromLong(clip.duration)},
             {QStringLiteral("is_sequence"), PyBool_FromLong(clip.isSequence)},
+            {QStringLiteral("is_subclip"), PyBool_FromLong(clip.isSubClip)},
         });
         if (!item) {
             Py_DECREF(list);
@@ -249,6 +281,140 @@ PyObject *projectAddSubClip(PyObject *self, PyObject *args)
     return fromQString(id);
 }
 
+/** @brief Converts a list of integers to a list for the api. */
+QList<int> toIntList(PyObject *object)
+{
+    QList<int> result;
+    if (!object) {
+        return result;
+    }
+    // Accept any sequence of ids, a list or a tuple
+    PyObject *sequence = PySequence_Fast(object, "A list of ids is expected");
+    if (!sequence) {
+        PyErr_Clear();
+        return result;
+    }
+    const Py_ssize_t count = PySequence_Fast_GET_SIZE(sequence);
+    for (Py_ssize_t i = 0; i < count; i++) {
+        PyObject *item = PySequence_Fast_GET_ITEM(sequence, i);
+        if (item && PyLong_Check(item)) {
+            result.append(static_cast<int>(PyLong_AsLong(item)));
+        }
+    }
+    Py_DECREF(sequence);
+    return result;
+}
+
+PyObject *projectMoveClip(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int clipId = -1;
+    int trackId = -1;
+    int position = 0;
+    if (!PyArg_ParseTuple(args, "iii", &clipId, &trackId, &position)) {
+        return nullptr;
+    }
+    const bool result = api->moveClip(clipId, trackId, position);
+    PyErr_Clear();
+    return PyBool_FromLong(result);
+}
+
+PyObject *projectGroupClips(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    PyObject *list = nullptr;
+    if (!PyArg_ParseTuple(args, "O", &list)) {
+        return nullptr;
+    }
+    const int groupId = api->groupClips(toIntList(list));
+    PyErr_Clear();
+    return PyLong_FromLong(groupId);
+}
+
+PyObject *projectUngroupClips(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    PyObject *list = nullptr;
+    if (!PyArg_ParseTuple(args, "O", &list)) {
+        return nullptr;
+    }
+    const bool result = api->ungroupClips(toIntList(list));
+    PyErr_Clear();
+    return PyBool_FromLong(result);
+}
+
+PyObject *projectMixClip(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int clipId = -1;
+    const char *mixId = nullptr;
+    int position = 0;
+    if (!PyArg_ParseTuple(args, "i|si", &clipId, &mixId, &position)) {
+        return nullptr;
+    }
+    const bool result = api->mixClip(clipId, mixId ? QString::fromUtf8(mixId) : QString(), position);
+    PyErr_Clear();
+    return PyBool_FromLong(result);
+}
+
+PyObject *projectClipMix(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int clipId = -1;
+    if (!PyArg_ParseTuple(args, "i", &clipId)) {
+        return nullptr;
+    }
+    const QVariantMap mix = api->clipMix(clipId);
+    PyErr_Clear();
+    return fromVariantMap(mix);
+}
+
+PyObject *projectSetTrackActive(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int trackId = -1;
+    int active = 1;
+    if (!PyArg_ParseTuple(args, "i|p", &trackId, &active)) {
+        return nullptr;
+    }
+    api->setTrackActive(trackId, active != 0);
+    PyErr_Clear();
+    return PyBool_FromLong(active != 0);
+}
+
+PyObject *projectIsTrackActive(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int trackId = -1;
+    if (!PyArg_ParseTuple(args, "i", &trackId)) {
+        return nullptr;
+    }
+    const bool active = api->isTrackActive(trackId);
+    PyErr_Clear();
+    return PyBool_FromLong(active);
+}
+
 PyObject *projectTracks(PyObject *self, PyObject *)
 {
     auto *api = projectApi(self);
@@ -286,11 +452,11 @@ PyObject *projectAddTrack(PyObject *self, PyObject *args)
         return nullptr;
     }
     const char *name = nullptr;
-    if (!PyArg_ParseTuple(args, "|s", &name)) {
+    int audio = 0;
+    if (!PyArg_ParseTuple(args, "|sp", &name, &audio)) {
         return nullptr;
     }
-    const int id = api->addTrack(name ? QString::fromUtf8(name) : QString());
-    PyErr_Clear();
+    const int id = api->addTrack(name ? QString::fromUtf8(name) : QString(), audio != 0);
     PyErr_Clear();
     return PyLong_FromLong(id);
 }
@@ -397,7 +563,15 @@ PyMethodDef projectMethods[] = {
     {"remove_clip", projectRemoveClip, METH_VARARGS, "Remove a clip from the bin."},
     {"add_subclip", projectAddSubClip, METH_VARARGS, "Create a subclip of a bin clip, returns its bin id."},
     {"tracks", projectTracks, METH_NOARGS, "The tracks of the timeline."},
-    {"add_track", projectAddTrack, METH_VARARGS, "Add a track to the timeline, returns its id."},
+    {"add_track", projectAddTrack, METH_VARARGS, "Add a track to the timeline, returns its id. The second argument tells if it is an audio track."},
+    {"set_track_active", projectSetTrackActive, METH_VARARGS, "Make a track the active one, only the active tracks receive the timeline operations."},
+    {"is_track_active", projectIsTrackActive, METH_VARARGS, "Tell whether a track is the active one."},
+    {"move_clip", projectMoveClip, METH_VARARGS, "Move a clip of the timeline to a track and a position."},
+    {"group_clips", projectGroupClips, METH_VARARGS, "Group clips together, takes a list of clip ids and returns the group id."},
+    {"ungroup_clips", projectUngroupClips, METH_VARARGS, "Remove clips from their group, takes a list of clip ids."},
+    {"mix_clip", projectMixClip, METH_VARARGS,
+     "Mix a clip with the one next to it. The type of mix and the position, at the start or the end of the clip, are optional."},
+    {"clip_mix", projectClipMix, METH_VARARGS, "The mix of a clip, empty when the clip has no mix."},
     {"timeline_clips", projectTimelineClips, METH_VARARGS, "The clips of a track."},
     {"insert_clip", projectInsertClip, METH_VARARGS, "Insert a bin clip in the timeline, returns its id. The mode is normal, overwrite or insert."},
     {"remove_clip_at", projectRemoveClipAt, METH_VARARGS, "Remove the clip at a position of a track."},
@@ -460,8 +634,26 @@ PyMethodDef moduleMethods[] = {
     {nullptr, nullptr, 0, nullptr},
 };
 
+const char *moduleDoc = "The Kdenlive scripting API.\n"
+                        "\n"
+                        "A script edits the project that is loaded in Kdenlive:\n"
+                        "\n"
+                        "    import kdenlive\n"
+                        "\n"
+                        "    project = kdenlive.project()\n"
+                        "    bin_id = project.add_clip('/path/to/video.mp4', 'My video')\n"
+                        "    track_id = project.add_track('V2', False)\n"
+                        "    project.set_track_active(track_id, True)\n"
+                        "    project.insert_clip(bin_id, track_id, 0)\n"
+                        "    project.save()\n"
+                        "\n"
+                        "The scripts of the user scripts directory are listed in the Scripts menu,\n"
+                        "a script can also run without the interface with 'kdenlive --script'.\n"
+                        "\n"
+                        "See src/scripting/README.md for the complete reference.";
+
 PyModuleDef moduleDef = {
-    PyModuleDef_HEAD_INIT, "kdenlive", "The Kdenlive scripting API.", -1, moduleMethods, nullptr, nullptr, nullptr, nullptr,
+    PyModuleDef_HEAD_INIT, "kdenlive", moduleDoc, -1, moduleMethods, nullptr, nullptr, nullptr, nullptr,
 };
 
 } // namespace
@@ -523,6 +715,14 @@ bool PythonEngine::initialize()
     Py_Initialize();
     if (!Py_IsInitialized()) {
         return false;
+    }
+    // The interpreter is embedded, it has no standard streams, a script would
+    // not be able to print anything without this
+    if (PyRun_SimpleString("import sys, io\n"
+                           "sys.stdout = io.TextIOWrapper(io.FileIO(1, 'w', closefd=False), encoding='utf-8', errors='replace', line_buffering=True)\n"
+                           "sys.stderr = io.TextIOWrapper(io.FileIO(2, 'w', closefd=False), encoding='utf-8', errors='replace', line_buffering=True)\n") != 0) {
+        // The streams could not be set up, this is not fatal
+        PyErr_Clear();
     }
     d->initialized = true;
     return true;

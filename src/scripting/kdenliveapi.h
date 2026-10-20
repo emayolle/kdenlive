@@ -23,6 +23,7 @@ struct ScriptBinClip
     QString producer;
     int duration{0};
     bool isSequence{false};
+    bool isSubClip{false};
 };
 
 /** @brief Description of a timeline track, as exposed to scripts. */
@@ -96,7 +97,17 @@ public:
     QString addClipToBin(const QString &url, const QString &name = {});
     /** @brief Removes a clip from the bin. */
     bool removeClipFromBin(const QString &binId);
-    /** @brief Creates a subclip of a bin clip and returns the new bin id. */
+    /**
+     * @brief Creates a subclip of a bin clip and returns the new bin id.
+     *
+     * A subclip is a zone of a bin clip, it can be inserted in the timeline
+     * like any other bin clip.
+     *
+     * @param binId The id of the bin clip to take the zone from.
+     * @param in The first frame of the zone.
+     * @param out The last frame of the zone, included.
+     * @return The id of the new subclip, empty on failure.
+     */
     QString addSubClip(const QString &binId, int in, int out);
 
     /**
@@ -112,8 +123,13 @@ public:
 
     /** @brief The tracks of the timeline. */
     QList<ScriptTrack> tracks() const;
-    /** @brief Adds a track to the timeline. */
-    int addTrack(const QString &name = {});
+    /**
+     * @brief Adds a track to the timeline.
+     * @param name The name of the track.
+     * @param audio True for an audio track, false for a video track.
+     * @return The id of the new track, -1 on failure.
+     */
+    int addTrack(const QString &name = {}, bool audio = false);
     /** @brief The clips of a track. */
     QList<ScriptClip> clips(int trackId) const;
     /** @brief The clip of a track at the given position, if any. */
@@ -125,7 +141,7 @@ public:
      * another one, the operation is refused. The overwrite mode replaces what is
      * there, the insert mode moves it to the right.
      *
-     * @param binId The id of the bin clip to insert.
+     * @param binId The id of the bin clip to insert, a subclip id can be used.
      * @param trackId The id of the track to insert the clip on.
      * @param position The position of the clip on the track, in frames.
      * @param mode The edit mode to use, one of normal, overwrite or insert.
@@ -134,6 +150,72 @@ public:
     int insertClip(const QString &binId, int trackId, int position, const QString &mode = QStringLiteral("overwrite"));
     /** @brief Removes the clip of a track at the given position. */
     bool removeClip(int trackId, int position);
+
+    /**
+     * @brief Moves a clip of the timeline.
+     *
+     * @param clipId The id of the clip to move.
+     * @param trackId The id of the track to move the clip to.
+     * @param position The new position on the track, in frames.
+     * @return true if the clip was moved.
+     */
+    bool moveClip(int clipId, int trackId, int position);
+
+    /**
+     * @brief Groups clips together.
+     *
+     * The clips that are already in a group are taken out of it, so that the
+     * group only contains the given clips.
+     *
+     * @param clipIds The ids of the clips to group.
+     * @return The id of the group, -1 on failure.
+     */
+    int groupClips(const QList<int> &clipIds);
+
+    /**
+     * @brief Removes clips from their group.
+     *
+     * @param clipIds The ids of the clips to ungroup.
+     * @return true if the operation succeeded.
+     */
+    bool ungroupClips(const QList<int> &clipIds);
+
+    /**
+     * @brief Mixes a clip with the one next to it.
+     *
+     * A mix is a transition between two clips, the second one is drawn over
+     * the first one.
+     *
+     * @param clipId The id of the clip to mix.
+     * @param mixId The type of mix, for instance luma.
+     * @param position Where to mix, 0 for the end of the clip, -1 for its start.
+     *        With 0, the mix is done at the start of the clip when it has no
+     *        following clip, like the mix action of the interface does.
+     * @return true if the mix was created.
+     */
+    bool mixClip(int clipId, const QString &mixId = QStringLiteral("luma"), int position = 0);
+
+    /**
+     * @brief The mix of a clip, if it has one.
+     *
+     * @param clipId The id of the clip.
+     * @return A description of the mix, empty if the clip has no mix.
+     */
+    QVariantMap clipMix(int clipId) const;
+
+    /**
+     * @brief Makes a track the active one.
+     *
+     * Only the active tracks receive the timeline operations, this is what the
+     * cursor of the interface does when it is moved.
+     *
+     * @param trackId The id of the track to activate.
+     * @param active True to activate the track, false to deactivate it.
+     */
+    void setTrackActive(int trackId, bool active);
+    /** @brief Tells whether a track is the active one. */
+    bool isTrackActive(int trackId) const;
+
     /** @brief The duration of a track, in frames. */
     int trackDuration(int trackId) const;
     /** @brief The playhead position, in frames. */

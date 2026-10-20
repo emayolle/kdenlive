@@ -964,6 +964,13 @@ public:
     /** @brief Returns a set containing all the items in the selection */
     std::unordered_set<int> getCurrentSelection() const;
 
+    /** @brief The mix of a clip, it is empty when the clip has no mix
+     *
+     *  The mix is between the clip and the one before or after it, depending on
+     *  where it was created.
+     */
+    QVariantMap clipMixInfo(int clipId) const;
+
     /** @brief The position of the timeline cursor, in frames
      *
      *  The cursor is kept here so that it is available even when there is no

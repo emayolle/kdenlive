@@ -10,6 +10,7 @@
 #include "bin/projectclip.h"
 #include "bin/projectfolder.h"
 #include "bin/projectitemmodel.h"
+#include "bin/projectsubclip.h"
 #include "core.h"
 #include "doc/kdenlivedoc.h"
 #include "profiles/profilemodel.hpp"
@@ -132,6 +133,22 @@ QList<ScriptBinClip> KdenliveApi::binClips() const
             break;
         }
         result.append(info);
+        // The sub clips of the clip are children of the clip in the bin
+        for (int i = 0; i < clip->childCount(); i++) {
+            const auto subClip = std::dynamic_pointer_cast<ProjectSubClip>(clip->child(i));
+            if (!subClip) {
+                continue;
+            }
+            ScriptBinClip subInfo;
+            subInfo.id = subClip->clipId();
+            subInfo.name = subClip->name();
+            subInfo.type = info.type;
+            subInfo.producer = subClip->getToolTip();
+            // The zone of a sub clip is inclusive
+            subInfo.duration = subClip->zone().y() - subClip->zone().x() + 1;
+            subInfo.isSubClip = true;
+            result.append(subInfo);
+        }
     }
     return result;
 }
@@ -170,6 +187,7 @@ QString KdenliveApi::addClipToBin(const QString &url, const QString &name)
         setError(i18n("Could not import %1", url));
         return {};
     }
+    m_core->pushUndo(undo, redo, i18nc("@action", "Add clip"));
     // The clip is loaded in a task, wait for it, a script expects to be able to
     // use the clip as soon as it is added
     if (!waitForClip(id)) {
@@ -231,7 +249,12 @@ bool KdenliveApi::removeClipFromBin(const QString &binId)
     }
     std::function<bool(void)> undo = []() { return true; };
     std::function<bool(void)> redo = []() { return true; };
-    return model->requestBinClipDeletion(clip, undo, redo);
+    if (!model->requestBinClipDeletion(clip, undo, redo)) {
+        setError(i18n("Could not remove clip %1", binId));
+        return false;
+    }
+    m_core->pushUndo(undo, redo, i18n("Delete bin Clips"));
+    return true;
 }
 
 QString KdenliveApi::addSubClip(const QString &binId, int in, int out)
@@ -247,10 +270,8 @@ QString KdenliveApi::addSubClip(const QString &binId, int in, int out)
         return {};
     }
     QString id;
-    std::function<bool(void)> undo = []() { return true; };
-    std::function<bool(void)> redo = []() { return true; };
     // The parent is the clip the fragment is taken from
-    if (!model->requestAddBinSubClip(id, in, out, {}, binId, undo, redo)) {
+    if (!model->requestAddBinSubClip(id, in, out, {}, binId)) {
         setError(i18n("Could not create subclip of %1", binId));
         return {};
     }
@@ -281,7 +302,7 @@ QList<ScriptTrack> KdenliveApi::tracks() const
     return result;
 }
 
-int KdenliveApi::addTrack(const QString &name)
+int KdenliveApi::addTrack(const QString &name, bool audio)
 {
     setError({});
     if (!hasProject()) {
@@ -290,9 +311,7 @@ int KdenliveApi::addTrack(const QString &name)
     }
     const auto model = m_core->projectManager()->getTimeline();
     int id = -1;
-    std::function<bool(void)> undo = []() { return true; };
-    std::function<bool(void)> redo = []() { return true; };
-    if (!model->requestTrackInsertion(0, id, name, false, undo, redo)) {
+    if (!model->requestTrackInsertion(0, id, name, audio)) {
         setError(i18n("Could not add track"));
         return -1;
     }
@@ -360,36 +379,197 @@ int KdenliveApi::insertClip(const QString &binId, int trackId, int position, con
         setError(i18n("No such track: %1", trackId));
         return -1;
     }
-    auto clip = m_core->projectItemModel()->getClipByBinID(binId);
-    if (!clip) {
+    const auto item = m_core->projectItemModel()->getItemByBinId(binId);
+    if (!item) {
         setError(i18n("No such bin clip: %1", binId));
         return -1;
     }
-    // The zone of the clip is inserted, the whole clip when it has no zone
-    QPoint zone = clip->zone();
-    if (zone.y() < zone.x()) {
-        zone = QPoint(0, clip->frameDuration() - 1);
+    // A sub clip is inserted with the zone it defines, using the clip it comes from
+    QString producerId = binId;
+    QPoint zone;
+    if (item->itemType() == AbstractProjectItem::SubClipItem) {
+        const auto subClip = std::static_pointer_cast<ProjectSubClip>(item);
+        const auto masterClip = subClip->getMasterClip();
+        if (!masterClip) {
+            setError(i18n("No such bin clip: %1", binId));
+            return -1;
+        }
+        producerId = masterClip->clipId();
+        // The zone of a sub clip is inclusive, the zone of an insertion is not
+        zone = QPoint(subClip->zone().x(), subClip->zone().y() + 1);
+    } else {
+        const auto clip = std::static_pointer_cast<ProjectClip>(item);
+        // The zone of the clip is inserted, the whole clip when it has no zone
+        zone = clip->zone();
+        if (zone.y() <= zone.x()) {
+            zone = QPoint(0, clip->frameDuration());
+        }
     }
     // In overwrite mode the content at the position is replaced, in insert mode
-    // it is pushed to the right
-    const bool overwrite = mode != QLatin1String("insert");
-
-    std::function<bool(void)> undo = []() { return true; };
-    std::function<bool(void)> redo = []() { return true; };
+    // it is pushed to the right. In the normal mode of Kdenlive, a clip cannot
+    // be dropped on top of another one, the operation is refused.
+    bool overwrite = mode != QLatin1String("insert");
+    if (mode == QLatin1String("normal")) {
+        const int zoneEnd = position + (zone.y() - zone.x());
+        for (const auto &existing : clips(trackId)) {
+            if (existing.position < zoneEnd && position < existing.position + existing.duration) {
+                setError(i18n("Cannot insert clip, the position %1 is occupied", position));
+                return -1;
+            }
+        }
+    }
     // useTargets is false so the clip lands on the requested track, not on the
     // current audio/video targets
-    if (!TimelineFunctions::insertZone(model, {trackId}, binId, position, zone, overwrite, false, undo, redo)) {
+    if (!TimelineFunctions::insertZone(model, {trackId}, producerId, position, zone, overwrite, false)) {
         setError(i18n("Could not insert clip %1", binId));
         return -1;
     }
     // Find the clip that was inserted
-    const auto clips = this->clips(trackId);
-    for (const auto &inserted : clips) {
-        if (inserted.binId == binId && inserted.position == position) {
+    const auto timelineClips = clips(trackId);
+    for (const auto &inserted : timelineClips) {
+        if (inserted.binId == producerId && inserted.position == position) {
             return inserted.id;
         }
     }
     return -1;
+}
+
+bool KdenliveApi::moveClip(int clipId, int trackId, int position)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return false;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    if (!model->isClip(clipId)) {
+        setError(i18n("No such clip: %1", clipId));
+        return false;
+    }
+    if (!model->isTrack(trackId)) {
+        setError(i18n("No such track: %1", trackId));
+        return false;
+    }
+    if (!model->requestClipMove(clipId, trackId, position, true, true, true)) {
+        setError(i18n("Could not move clip %1", clipId));
+        return false;
+    }
+    return true;
+}
+
+int KdenliveApi::groupClips(const QList<int> &clipIds)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return -1;
+    }
+    if (clipIds.size() < 2) {
+        setError(i18n("Select at least 2 clips to group"));
+        return -1;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    std::unordered_set<int> ids;
+    for (const auto &clipId : clipIds) {
+        if (!model->isClip(clipId)) {
+            setError(i18n("No such clip: %1", clipId));
+            return -1;
+        }
+        ids.insert(clipId);
+    }
+    const int groupId = model->requestClipsGroup(ids, true);
+    if (groupId < 0) {
+        setError(i18n("Could not group the clips"));
+        return -1;
+    }
+    return groupId;
+}
+
+bool KdenliveApi::ungroupClips(const QList<int> &clipIds)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return false;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    std::unordered_set<int> ids;
+    for (const auto &clipId : clipIds) {
+        if (!model->isClip(clipId)) {
+            setError(i18n("No such clip: %1", clipId));
+            return false;
+        }
+        ids.insert(clipId);
+    }
+    if (ids.empty()) {
+        return true;
+    }
+    if (!model->requestClipsUngroup(ids)) {
+        setError(i18n("Could not ungroup the clips"));
+        return false;
+    }
+    return true;
+}
+
+bool KdenliveApi::mixClip(int clipId, const QString &mixId, int position)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return false;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    if (!model->isClip(clipId)) {
+        setError(i18n("No such clip: %1", clipId));
+        return false;
+    }
+    // Only the active tracks receive the timeline operations
+    if (!isTrackActive(model->getClipTrackId(clipId))) {
+        setError(i18n("The track of clip %1 is not active", clipId));
+        return false;
+    }
+    if (!model->mixClip(clipId, mixId, position)) {
+        setError(i18n("Could not mix clip %1", clipId));
+        return false;
+    }
+    return true;
+}
+
+QVariantMap KdenliveApi::clipMix(int clipId) const
+{
+    QVariantMap result;
+    if (!hasProject()) {
+        return result;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    return model->clipMixInfo(clipId);
+}
+
+void KdenliveApi::setTrackActive(int trackId, bool active)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    if (!model->isTrack(trackId)) {
+        setError(i18n("No such track: %1", trackId));
+        return;
+    }
+    model->setTrackProperty(trackId, QStringLiteral("kdenlive:timeline_active"), active ? QStringLiteral("1") : QStringLiteral("0"));
+}
+
+bool KdenliveApi::isTrackActive(int trackId) const
+{
+    if (!hasProject()) {
+        return false;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    if (!model->isTrack(trackId)) {
+        return false;
+    }
+    return model->getTrackProperty(trackId, QStringLiteral("kdenlive:timeline_active")).toString() == QStringLiteral("1");
 }
 
 bool KdenliveApi::removeClip(int trackId, int position)
