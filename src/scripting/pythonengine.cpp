@@ -415,6 +415,59 @@ PyObject *projectIsTrackActive(PyObject *self, PyObject *args)
     return PyBool_FromLong(active);
 }
 
+PyObject *projectSetTrackName(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int trackId = -1;
+    const char *name = nullptr;
+    if (!PyArg_ParseTuple(args, "is", &trackId, &name)) {
+        return nullptr;
+    }
+    const bool result = api->setTrackName(trackId, QString::fromUtf8(name));
+    PyErr_Clear();
+    return PyBool_FromLong(result);
+}
+
+PyObject *projectRemoveClipMix(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int clipId = -1;
+    if (!PyArg_ParseTuple(args, "i", &clipId)) {
+        return nullptr;
+    }
+    const bool result = api->removeClipMix(clipId);
+    PyErr_Clear();
+    return PyBool_FromLong(result);
+}
+
+PyObject *projectUndo(PyObject *self, PyObject *)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    const bool result = api->undo();
+    PyErr_Clear();
+    return PyBool_FromLong(result);
+}
+
+PyObject *projectRedo(PyObject *self, PyObject *)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    const bool result = api->redo();
+    PyErr_Clear();
+    return PyBool_FromLong(result);
+}
+
 PyObject *projectTracks(PyObject *self, PyObject *)
 {
     auto *api = projectApi(self);
@@ -431,6 +484,7 @@ PyObject *projectTracks(PyObject *self, PyObject *)
         PyObject *item = fromPairs({
             {QStringLiteral("id"), PyLong_FromLong(track.id)},
             {QStringLiteral("name"), fromQString(track.name)},
+            {QStringLiteral("tag"), fromQString(track.tag)},
             {QStringLiteral("is_audio"), PyBool_FromLong(track.isAudio)},
             {QStringLiteral("is_video"), PyBool_FromLong(track.isVideo)},
             {QStringLiteral("clip_count"), PyLong_FromLong(track.clipCount)},
@@ -566,12 +620,16 @@ PyMethodDef projectMethods[] = {
     {"add_track", projectAddTrack, METH_VARARGS, "Add a track to the timeline, returns its id. The second argument tells if it is an audio track."},
     {"set_track_active", projectSetTrackActive, METH_VARARGS, "Make a track the active one, only the active tracks receive the timeline operations."},
     {"is_track_active", projectIsTrackActive, METH_VARARGS, "Tell whether a track is the active one."},
+    {"set_track_name", projectSetTrackName, METH_VARARGS, "Rename a track."},
     {"move_clip", projectMoveClip, METH_VARARGS, "Move a clip of the timeline to a track and a position."},
     {"group_clips", projectGroupClips, METH_VARARGS, "Group clips together, takes a list of clip ids and returns the group id."},
     {"ungroup_clips", projectUngroupClips, METH_VARARGS, "Remove clips from their group, takes a list of clip ids."},
     {"mix_clip", projectMixClip, METH_VARARGS,
      "Mix a clip with the one next to it. The type of mix and the position, at the start or the end of the clip, are optional."},
     {"clip_mix", projectClipMix, METH_VARARGS, "The mix of a clip, empty when the clip has no mix."},
+    {"remove_clip_mix", projectRemoveClipMix, METH_VARARGS, "Remove the mix of a clip."},
+    {"undo", projectUndo, METH_NOARGS, "Undo the last operation on the project."},
+    {"redo", projectRedo, METH_NOARGS, "Redo the last undone operation."},
     {"timeline_clips", projectTimelineClips, METH_VARARGS, "The clips of a track."},
     {"insert_clip", projectInsertClip, METH_VARARGS, "Insert a bin clip in the timeline, returns its id. The mode is normal, overwrite or insert."},
     {"remove_clip_at", projectRemoveClipAt, METH_VARARGS, "Remove the clip at a position of a track."},

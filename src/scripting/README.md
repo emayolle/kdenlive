@@ -91,6 +91,7 @@ The clips of the bin are dictionaries with the following keys:
 |-------------------------------------|-----------------------------------------------------|
 | `tracks()`                          | The tracks of the timeline                          |
 | `add_track(name, audio)`            | Add a track, returns its id                         |
+| `set_track_name(track_id, name)`    | Rename a track                                      |
 | `set_track_active(track_id, active)`| Make a track the active one                         |
 | `is_track_active(track_id)`         | Tell whether a track is the active one              |
 | `timeline_clips(track_id)`          | The clips of a track                                |
@@ -101,7 +102,10 @@ The clips of the bin are dictionaries with the following keys:
 | `ungroup_clips(clip_ids)`           | Remove clips from their group                       |
 | `mix_clip(clip_id, mix_id, position)`| Mix a clip with the one next to it                   |
 | `clip_mix(clip_id)`                 | The mix of a clip, empty when it has none            |
+| `remove_clip_mix(clip_id)`          | Remove the mix of a clip                             |
 | `track_duration(track_id)`          | The duration of a track, in frames                  |
+| `undo()`                            | Undo the last operation on the project              |
+| `redo()`                            | Redo the last undone operation                      |
 | `save(path)`                        | Save the project                                    |
 
 The `insert_clip` mode is one of:
@@ -120,7 +124,8 @@ The tracks of the timeline are dictionaries with the following keys:
 | Key         | Type   | Description                        |
 |-------------|--------|------------------------------------|
 | `id`        | int    | The id of the track                |
-| `name`      | string | The name of the track              |
+| `name`      | string | The name of the track, empty when it has none |
+| `tag`       | string | The automatic name of the track, for instance `V1` or `A2` |
 | `is_audio`  | bool   | True for an audio track            |
 | `is_video`  | bool   | True for a video track             |
 | `clip_count`| int    | The number of clips on the track   |
@@ -150,6 +155,8 @@ source cannot be mixed.
 project.mix_clip(clip_id, "luma", 0)
 # Mix the clip with the one that precedes it
 project.mix_clip(clip_id, "luma", -1)
+# Remove the mix of the clip
+project.remove_clip_mix(clip_id)
 ```
 
 The mix of a clip is a dictionary with the following keys, it is empty when
@@ -161,6 +168,20 @@ the clip has no mix:
 | `has_end_mix`   | bool | True when the clip has a mix at its end           |
 | `other_clip_id` | int  | The id of the other clip of the mix               |
 | `duration`      | int  | The duration of the mix, in frames                |
+
+## Undo and redo
+
+The operations of the api are added to the undo stack of the project, like
+the operations of the interface. A script can undo them:
+
+```python
+project.insert_clip(bin_id, track_id, 0)
+project.undo()
+project.redo()
+```
+
+The undo stack is the one of the project, the operations done from the
+interface and the ones done by a script are in the same stack.
 
 ## The module
 

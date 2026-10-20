@@ -12,6 +12,7 @@
 #include "bin/projectitemmodel.h"
 #include "bin/projectsubclip.h"
 #include "core.h"
+#include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
 #include "profiles/profilemodel.hpp"
 #include "project/projectmanager.h"
@@ -242,14 +243,15 @@ bool KdenliveApi::removeClipFromBin(const QString &binId)
         return false;
     }
     const auto model = m_core->projectItemModel();
-    auto clip = model->getClipByBinID(binId);
-    if (!clip) {
+    // A sub clip can be removed as well as a clip
+    const auto item = model->getItemByBinId(binId);
+    if (!item) {
         setError(i18n("No such bin clip: %1", binId));
         return false;
     }
     std::function<bool(void)> undo = []() { return true; };
     std::function<bool(void)> redo = []() { return true; };
-    if (!model->requestBinClipDeletion(clip, undo, redo)) {
+    if (!model->requestBinClipDeletion(item, undo, redo)) {
         setError(i18n("Could not remove clip %1", binId));
         return false;
     }
@@ -289,10 +291,10 @@ QList<ScriptTrack> KdenliveApi::tracks() const
     for (const auto &trackId : trackIds) {
         ScriptTrack info;
         info.id = trackId;
-        info.name = model->getTrackFullName(trackId);
-        if (info.name.isEmpty()) {
-            info.name = model->getTrackTagById(trackId);
-        }
+        // The name of the track is the one the user gave it, the tag is the
+        // automatic name of the track, for instance V1
+        info.name = model->getTrackProperty(trackId, QStringLiteral("kdenlive:track_name")).toString();
+        info.tag = model->getTrackTagById(trackId);
         info.isAudio = model->isAudioTrack(trackId);
         info.isVideo = !info.isAudio;
         info.clipCount = static_cast<int>(model->getTrackClipIds(trackId).size());
@@ -545,6 +547,34 @@ QVariantMap KdenliveApi::clipMix(int clipId) const
     return model->clipMixInfo(clipId);
 }
 
+bool KdenliveApi::removeClipMix(int clipId)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return false;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    if (!model->isClip(clipId)) {
+        setError(i18n("No such clip: %1", clipId));
+        return false;
+    }
+    const auto mix = model->clipMixInfo(clipId);
+    if (mix.value(QStringLiteral("has_start_mix")).toBool()) {
+        // The mix is at the start of the clip
+        return model->removeMix(clipId);
+    }
+    if (mix.value(QStringLiteral("has_end_mix")).toBool()) {
+        // The mix is at the end of the clip, the transition is on the next clip
+        const int otherClipId = mix.value(QStringLiteral("other_clip_id")).toInt();
+        if (otherClipId > -1) {
+            return model->removeMix(otherClipId);
+        }
+    }
+    setError(i18n("Clip %1 has no mix", clipId));
+    return false;
+}
+
 void KdenliveApi::setTrackActive(int trackId, bool active)
 {
     setError({});
@@ -570,6 +600,54 @@ bool KdenliveApi::isTrackActive(int trackId) const
         return false;
     }
     return model->getTrackProperty(trackId, QStringLiteral("kdenlive:timeline_active")).toString() == QStringLiteral("1");
+}
+
+bool KdenliveApi::setTrackName(int trackId, const QString &name)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return false;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    if (!model->isTrack(trackId)) {
+        setError(i18n("No such track: %1", trackId));
+        return false;
+    }
+    model->setTrackName(trackId, name);
+    return true;
+}
+
+bool KdenliveApi::undo()
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return false;
+    }
+    const auto stack = m_core->undoStack();
+    if (!stack || !stack->canUndo()) {
+        setError(i18n("Nothing to undo"));
+        return false;
+    }
+    stack->undo();
+    return true;
+}
+
+bool KdenliveApi::redo()
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return false;
+    }
+    const auto stack = m_core->undoStack();
+    if (!stack || !stack->canRedo()) {
+        setError(i18n("Nothing to redo"));
+        return false;
+    }
+    stack->redo();
+    return true;
 }
 
 bool KdenliveApi::removeClip(int trackId, int position)

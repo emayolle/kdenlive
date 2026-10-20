@@ -31,6 +31,7 @@ struct ScriptTrack
 {
     int id{-1};
     QString name;
+    QString tag;
     bool isAudio{false};
     bool isVideo{false};
     int clipCount{0};
@@ -204,6 +205,17 @@ public:
     QVariantMap clipMix(int clipId) const;
 
     /**
+     * @brief Removes the mix of a clip.
+     *
+     * The mix at the start of the clip is removed, or the mix at its end when it
+     * has no mix at its start.
+     *
+     * @param clipId The id of the clip.
+     * @return true if the mix was removed.
+     */
+    bool removeClipMix(int clipId);
+
+    /**
      * @brief Makes a track the active one.
      *
      * Only the active tracks receive the timeline operations, this is what the
@@ -215,6 +227,20 @@ public:
     void setTrackActive(int trackId, bool active);
     /** @brief Tells whether a track is the active one. */
     bool isTrackActive(int trackId) const;
+
+    /**
+     * @brief Renames a track.
+     *
+     * @param trackId The id of the track to rename.
+     * @param name The new name of the track.
+     * @return true if the track was renamed.
+     */
+    bool setTrackName(int trackId, const QString &name);
+
+    /** @brief Undoes the last operation on the project. */
+    bool undo();
+    /** @brief Redoes the last undone operation. */
+    bool redo();
 
     /** @brief The duration of a track, in frames. */
     int trackDuration(int trackId) const;
