@@ -66,6 +66,8 @@ find_package(Python3 COMPONENTS Development.Embed)
 if(Python3_FOUND)
     message(STATUS "Found Python3: ${Python3_EXECUTABLE} (version ${Python3_VERSION})")
     set(kdenlive_SCRIPTING_FOUND TRUE)
+    # The tests need to know if the scripting api is built
+    set(kdenlive_SCRIPTING_FOUND TRUE PARENT_SCOPE)
 else()
     message(STATUS "Python development files not found, the scripting API will not be built")
 endif()

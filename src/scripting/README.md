@@ -131,7 +131,8 @@ The tracks of the timeline are dictionaries with the following keys:
 | `clip_count`| int    | The number of clips on the track   |
 | `duration`  | int    | The duration of the track, in frames|
 
-The clips of a track are dictionaries with the following keys:
+The clips of a track are dictionaries with the following keys, they are
+sorted by position:
 
 | Key        | Type   | Description                       |
 |------------|--------|-----------------------------------|

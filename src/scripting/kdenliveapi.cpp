@@ -27,6 +27,8 @@
 #include <QTimer>
 #include <QUrl>
 
+#include <algorithm>
+
 KdenliveApi::KdenliveApi(Core *core, QObject *parent)
     : QObject(parent)
     , m_core(core)
@@ -342,6 +344,8 @@ QList<ScriptClip> KdenliveApi::clips(int trackId) const
         }
         result.append(info);
     }
+    // The clips are sorted by position, this is the order they appear on the track
+    std::sort(result.begin(), result.end(), [](const ScriptClip &a, const ScriptClip &b) { return a.position < b.position; });
     return result;
 }
 

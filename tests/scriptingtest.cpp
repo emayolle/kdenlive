@@ -1,0 +1,180 @@
+/*
+    SPDX-FileCopyrightText: 2026 Erwan Mayolle <erwan.mayolle.pro@gmail.com>
+
+    SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+*/
+#include "catch.hpp"
+#include "test_utils.hpp"
+// test specific headers
+#include "doc/docundostack.hpp"
+#include "doc/kdenlivedoc.h"
+#include "scripting/kdenliveapi.h"
+
+#include "core.h"
+
+using namespace fakeit;
+
+TEST_CASE("Scripting api", "[Scripting]")
+{
+    // Create timeline
+    auto binModel = pCore->projectItemModel();
+    binModel->clean();
+    std::shared_ptr<DocUndoStack> undoStack = std::make_shared<DocUndoStack>(nullptr);
+
+    // Create document
+    KdenliveDoc document(undoStack);
+    pCore->projectManager()->testSetDocument(&document);
+    std::function<bool(void)> undo = []() { return true; };
+    std::function<bool(void)> redo = []() { return true; };
+    QDateTime documentDate = QDateTime::currentDateTime();
+    KdenliveTests::updateTimeline(false, QString(), QString(), documentDate, 0);
+    auto timeline = document.getTimeline(document.uuid());
+    pCore->projectManager()->testSetActiveTimeline(timeline);
+
+    KdenliveApi api(pCore.get());
+
+    // A clip with 100 frames, the mix needs free frames to work
+    const QString binId = KdenliveTests::createProducer(pCore->getProjectProfile(), "red", binModel, 100, false);
+
+    SECTION("Add a track")
+    {
+        const int trackCount = api.tracks().size();
+        const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);
+        REQUIRE(trackId > -1);
+        REQUIRE(api.tracks().size() == trackCount + 1);
+
+        const auto track = api.tracks().last();
+        REQUIRE(track.id == trackId);
+        REQUIRE(track.name == QStringLiteral("Scripting track"));
+        REQUIRE(track.isVideo);
+        REQUIRE(!track.isAudio);
+
+        // The track can be renamed
+        REQUIRE(api.setTrackName(trackId, QStringLiteral("Renamed")));
+        REQUIRE(api.tracks().last().name == QStringLiteral("Renamed"));
+
+        // Only the active tracks receive the timeline operations
+        REQUIRE(api.isTrackActive(trackId));
+        api.setTrackActive(trackId, false);
+        REQUIRE(!api.isTrackActive(trackId));
+        api.setTrackActive(trackId, true);
+        REQUIRE(api.isTrackActive(trackId));
+
+        // An unknown track is refused
+        REQUIRE(api.setTrackName(-1, QStringLiteral("Nope")) == false);
+        REQUIRE(!api.lastError().isEmpty());
+    }
+
+    SECTION("Insert a clip in the timeline")
+    {
+        const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);
+        REQUIRE(trackId > -1);
+        api.setTrackActive(trackId, true);
+
+        const int clipId = api.insertClip(binId, trackId, 100);
+        REQUIRE(clipId > -1);
+
+        const auto clips = api.clips(trackId);
+        REQUIRE(clips.size() == 1);
+        REQUIRE(clips.first().id == clipId);
+        REQUIRE(clips.first().position == 100);
+        REQUIRE(clips.first().duration == 100);
+        REQUIRE(clips.first().binId == binId);
+        REQUIRE(clips.first().trackId == trackId);
+
+        // The clip can be found by its position
+        REQUIRE(api.clipAt(trackId, 100).id == clipId);
+        REQUIRE(api.clipAt(trackId, 0).id == -1);
+
+        // An unknown clip or track is refused
+        REQUIRE(api.insertClip(QStringLiteral("42"), trackId, 0) == -1);
+        REQUIRE(!api.lastError().isEmpty());
+        REQUIRE(api.insertClip(binId, -1, 0) == -1);
+        REQUIRE(!api.lastError().isEmpty());
+    }
+
+    SECTION("Move and group the clips")
+    {
+        const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);
+        api.setTrackActive(trackId, true);
+        const int clip1 = api.insertClip(binId, trackId, 100);
+        const int clip2 = api.insertClip(binId, trackId, 200);
+        REQUIRE(clip1 > -1);
+        REQUIRE(clip2 > -1);
+
+        // Move a clip
+        REQUIRE(api.moveClip(clip2, trackId, 300));
+        const auto clips = api.clips(trackId);
+        REQUIRE(clips.size() == 2);
+        REQUIRE(clips.at(1).id == clip2);
+        REQUIRE(clips.at(1).position == 300);
+
+        // Group the clips
+        const int groupId = api.groupClips({clip1, clip2});
+        REQUIRE(groupId > -1);
+        // A group needs at least two clips
+        REQUIRE(api.groupClips({clip1}) == -1);
+        REQUIRE(!api.lastError().isEmpty());
+        // An unknown clip cannot be grouped
+        REQUIRE(api.groupClips({clip1, 9999}) == -1);
+        REQUIRE(!api.lastError().isEmpty());
+
+        // And ungroup them
+        REQUIRE(api.ungroupClips({clip1, clip2}));
+        REQUIRE(api.ungroupClips({9999}) == false);
+        REQUIRE(!api.lastError().isEmpty());
+    }
+
+    SECTION("Mix the clips")
+    {
+        const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);
+        api.setTrackActive(trackId, true);
+        const int clip1 = api.insertClip(binId, trackId, 0);
+        const int clip2 = api.insertClip(binId, trackId, 100);
+        REQUIRE(clip1 > -1);
+        REQUIRE(clip2 > -1);
+
+        // A clip that has no mix has no mix info
+        REQUIRE(api.clipMix(clip1).isEmpty());
+
+        // Mix the first clip with the second one
+        REQUIRE(api.mixClip(clip1, QStringLiteral("luma"), 0));
+
+        const auto mix = api.clipMix(clip1);
+        REQUIRE(!mix.isEmpty());
+        REQUIRE(mix.value(QStringLiteral("has_end_mix")).toBool());
+        REQUIRE(!mix.value(QStringLiteral("has_start_mix")).toBool());
+        // The other clip of the mix is the second one
+        REQUIRE(mix.value(QStringLiteral("other_clip_id")).toInt() == clip2);
+        REQUIRE(mix.value(QStringLiteral("duration")).toInt() > 0);
+
+        // The mix can be removed
+        REQUIRE(api.removeClipMix(clip1));
+        REQUIRE(api.clipMix(clip1).isEmpty());
+        // A clip without mix cannot be mixed again
+        REQUIRE(api.removeClipMix(clip1) == false);
+        REQUIRE(!api.lastError().isEmpty());
+    }
+
+    SECTION("Undo the operations")
+    {
+        const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);
+        api.setTrackActive(trackId, true);
+        REQUIRE(api.insertClip(binId, trackId, 100) > -1);
+        REQUIRE(api.clips(trackId).size() == 1);
+
+        // The insertion is undoable
+        REQUIRE(api.undo());
+        REQUIRE(api.clips(trackId).isEmpty());
+
+        // And redoable
+        REQUIRE(api.redo());
+        REQUIRE(api.clips(trackId).size() == 1);
+
+        // An unknown clip cannot be mixed
+        REQUIRE(api.mixClip(9999) == false);
+        REQUIRE(!api.lastError().isEmpty());
+    }
+
+    pCore->projectManager()->closeCurrentDocument(false, false);
+}

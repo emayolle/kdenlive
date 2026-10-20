@@ -47,6 +47,11 @@ set(KdenliveTest_SOURCES
     utilstest.cpp
 )
 
+# The scripting api is only built when the python interpreter is available
+if(kdenlive_SCRIPTING_FOUND)
+    list(APPEND KdenliveTest_SOURCES scriptingtest.cpp)
+endif()
+
 include(ECMAddTests)
 
 # Shared test library
