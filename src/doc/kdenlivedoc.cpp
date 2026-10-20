@@ -153,8 +153,7 @@ KdenliveDoc::KdenliveDoc(std::shared_ptr<DocUndoStack> undoStack, std::pair<int,
     pCore->taskManager.unBlock();
 }
 
-DocOpenResult KdenliveDoc::Open(const QUrl &url, const QString &projectFolder, QUndoGroup *undoGroup,
-    bool recoverCorruption, MainWindow *parent)
+DocOpenResult KdenliveDoc::Open(const QUrl &url, const QString &projectFolder, QUndoGroup *undoGroup, bool recoverCorruption, MainWindow *parent)
 {
 
     DocOpenResult result = DocOpenResult{};
@@ -223,7 +222,6 @@ DocOpenResult KdenliveDoc::Open(const QUrl &url, const QString &projectFolder, Q
     }
     file.close();
 
-
     qCDebug(KDENLIVE_LOG) << "// validating project file";
     DocumentValidator validator(domDoc, url);
     bool success = validator.isProject();
@@ -279,7 +277,7 @@ DocOpenResult KdenliveDoc::Open(const QUrl &url, const QString &projectFolder, Q
     auto doc = std::unique_ptr<KdenliveDoc>(new KdenliveDoc(url, domDoc, projectFolder, undoGroup, parent));
     if (!validationResult.second.isEmpty()) {
         doc->m_modifiedDecimalPoint = validationResult.second;
-        //doc->setModifiedDecimalPoint(validationResult.second);
+        // doc->setModifiedDecimalPoint(validationResult.second);
     }
     if (!doc->loadDocumentProperties()) {
         result.setAborted();
@@ -740,7 +738,9 @@ bool KdenliveDoc::saveSceneList(const QString &path, const QString &scene, bool 
 
     // Backup current version
     backupLastSavedVersion(path);
-    if (m_documentOpenStatus != CleanProject && saveOverExistingFile) {
+    // There is nothing to back up when the file does not exist yet, this is the
+    // case when the project is saved for the first time under a new name
+    if (m_documentOpenStatus != CleanProject && saveOverExistingFile && QFile::exists(path)) {
         // create visible backup file and warn user
         QString baseFile = path.section(QStringLiteral(".kdenlive"), 0, 0);
         int ct = 0;
