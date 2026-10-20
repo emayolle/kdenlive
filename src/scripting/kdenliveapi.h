@@ -99,6 +99,17 @@ public:
     /** @brief Creates a subclip of a bin clip and returns the new bin id. */
     QString addSubClip(const QString &binId, int in, int out);
 
+    /**
+     * @brief Waits for a bin clip to be loaded.
+     *
+     * The clips are loaded in a task, this runs the event loop until the clip
+     * has a producer, so that a script can use it right away.
+     *
+     * @param binId The id of the clip to wait for.
+     * @return true if the clip is ready.
+     */
+    bool waitForClip(const QString &binId);
+
     /** @brief The tracks of the timeline. */
     QList<ScriptTrack> tracks() const;
     /** @brief Adds a track to the timeline. */
@@ -109,9 +120,18 @@ public:
     ScriptClip clipAt(int trackId, int position) const;
     /**
      * @brief Inserts a bin clip in the timeline.
+     *
+     * In the normal edit mode of Kdenlive, a clip cannot be dropped on top of
+     * another one, the operation is refused. The overwrite mode replaces what is
+     * there, the insert mode moves it to the right.
+     *
+     * @param binId The id of the bin clip to insert.
+     * @param trackId The id of the track to insert the clip on.
+     * @param position The position of the clip on the track, in frames.
+     * @param mode The edit mode to use, one of normal, overwrite or insert.
      * @return The id of the new timeline clip, -1 on failure.
      */
-    int insertClip(const QString &binId, int trackId, int position);
+    int insertClip(const QString &binId, int trackId, int position, const QString &mode = QStringLiteral("overwrite"));
     /** @brief Removes the clip of a track at the given position. */
     bool removeClip(int trackId, int position);
     /** @brief The duration of a track, in frames. */

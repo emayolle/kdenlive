@@ -318,10 +318,11 @@ PyObject *projectInsertClip(PyObject *self, PyObject *args)
     const char *binId = nullptr;
     int trackId = -1;
     int position = 0;
-    if (!PyArg_ParseTuple(args, "sii", &binId, &trackId, &position)) {
+    const char *mode = nullptr;
+    if (!PyArg_ParseTuple(args, "sii|s", &binId, &trackId, &position, &mode)) {
         return nullptr;
     }
-    const int id = api->insertClip(QString::fromUtf8(binId), trackId, position);
+    const int id = api->insertClip(QString::fromUtf8(binId), trackId, position, mode ? QString::fromUtf8(mode) : QString());
     PyErr_Clear();
     return PyLong_FromLong(id);
 }
@@ -378,7 +379,7 @@ PyMethodDef projectMethods[] = {
     {"tracks", projectTracks, METH_NOARGS, "The tracks of the timeline."},
     {"add_track", projectAddTrack, METH_VARARGS, "Add a track to the timeline, returns its id."},
     {"timeline_clips", projectTimelineClips, METH_VARARGS, "The clips of a track."},
-    {"insert_clip", projectInsertClip, METH_VARARGS, "Insert a bin clip in the timeline, returns its id."},
+    {"insert_clip", projectInsertClip, METH_VARARGS, "Insert a bin clip in the timeline, returns its id. The mode is normal, overwrite or insert."},
     {"remove_clip_at", projectRemoveClipAt, METH_VARARGS, "Remove the clip at a position of a track."},
     {"track_duration", projectTrackDuration, METH_VARARGS, "The duration of a track in frames."},
     {"save", projectSave, METH_VARARGS, "Save the project."},

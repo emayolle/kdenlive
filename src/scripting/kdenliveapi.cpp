@@ -19,7 +19,9 @@
 
 #include <KLocalizedString>
 
+#include <QEventLoop>
 #include <QFileInfo>
+#include <QTimer>
 #include <QUrl>
 
 KdenliveApi::KdenliveApi(Core *core, QObject *parent)
@@ -167,6 +169,12 @@ QString KdenliveApi::addClipToBin(const QString &url, const QString &name)
         setError(i18n("Could not import %1", url));
         return {};
     }
+    // The clip is loaded in a task, wait for it, a script expects to be able to
+    // use the clip as soon as it is added
+    if (!waitForClip(id)) {
+        setError(i18n("Could not load %1", url));
+        return {};
+    }
     if (!name.isEmpty()) {
         auto clip = model->getClipByBinID(id);
         if (clip) {
@@ -174,6 +182,37 @@ QString KdenliveApi::addClipToBin(const QString &url, const QString &name)
         }
     }
     return id;
+}
+
+bool KdenliveApi::waitForClip(const QString &binId)
+{
+    const auto model = m_core->projectItemModel();
+    auto clip = model->getClipByBinID(binId);
+    if (!clip) {
+        return false;
+    }
+    // A clip that is already loaded has a valid producer
+    if (clip->isValid()) {
+        return true;
+    }
+    // Otherwise the clip is loaded in a task, run the event loop until it is ready
+    QEventLoop loop;
+    bool ready = false;
+    const auto connection = connect(clip.get(), &ProjectClip::producerChanged, this, [&loop, &ready]() {
+        ready = true;
+        loop.quit();
+    });
+    // The clip may be ready already, in that case the signal was emitted before
+    // we could connect to it
+    if (clip->isValid()) {
+        ready = true;
+    } else {
+        // A timeout avoids hanging forever if the file cannot be read
+        QTimer::singleShot(30000, &loop, &QEventLoop::quit);
+        loop.exec();
+    }
+    disconnect(connection);
+    return ready && clip->isValid();
 }
 
 bool KdenliveApi::removeClipFromBin(const QString &binId)
@@ -307,7 +346,7 @@ ScriptClip KdenliveApi::clipAt(int trackId, int position) const
     return info;
 }
 
-int KdenliveApi::insertClip(const QString &binId, int trackId, int position)
+int KdenliveApi::insertClip(const QString &binId, int trackId, int position, const QString &mode)
 {
     setError({});
     if (!hasProject()) {
@@ -319,10 +358,21 @@ int KdenliveApi::insertClip(const QString &binId, int trackId, int position)
         setError(i18n("No such track: %1", trackId));
         return -1;
     }
+    // The edit mode decides what happens when the position is already taken
+    const TimelineMode::EditMode previousMode = model->editMode();
+    if (mode == QLatin1String("normal")) {
+        model->setEditMode(TimelineMode::NormalEdit);
+    } else if (mode == QLatin1String("insert")) {
+        model->setEditMode(TimelineMode::InsertEdit);
+    } else {
+        model->setEditMode(TimelineMode::OverwriteEdit);
+    }
     int id = -1;
     // useTargets is false so the clip lands on the requested track, not on the
     // current audio/video targets
-    if (!model->requestClipInsertion(binId, trackId, position, id, true, false, false)) {
+    const bool inserted = model->requestClipInsertion(binId, trackId, position, id, true, false, false);
+    model->setEditMode(previousMode);
+    if (!inserted) {
         setError(i18n("Could not insert clip %1", binId));
         return -1;
     }
@@ -388,16 +438,6 @@ bool KdenliveApi::save(const QString &path)
         // In the GUI, reuse the regular save path, it handles backups and thumbnails
         return projectManager->saveFileAs(target, true);
     }
-    // Headless: build the scene list ourselves, the GUI save path needs a MainWindow
-    const QString saveFolder = QFileInfo(target).absolutePath();
-    const QString scene = projectManager->projectSceneList(saveFolder).first;
-    if (!scene.contains(QLatin1String("<track "))) {
-        setError(i18n("The timeline is corrupted, refusing to save"));
-        return false;
-    }
-    if (!m_core->currentDoc()->saveSceneList(target, scene, true)) {
-        setError(i18n("Could not save project to %1", target));
-        return false;
-    }
-    return true;
+    // Headless: the save path of the interface needs a MainWindow
+    return projectManager->saveFileHeadless(target);
 }
