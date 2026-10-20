@@ -7,9 +7,10 @@
 #include "scriptmanager.h"
 #include "pythonengine.h"
 
+#include <KActionCategory>
 #include <KLocalizedString>
+#include <QAction>
 #include <QDir>
-
 #include <QFileInfo>
 
 ScriptManager::ScriptManager(QObject *parent)
@@ -38,6 +39,7 @@ QStringList ScriptManager::scriptDirectories() const
 QStringList ScriptManager::discoverScripts() const
 {
     QStringList scripts;
+    QSet<QString> seen;
     for (const auto &directory : scriptDirectories()) {
         QDir dir(directory);
         if (!dir.exists()) {
@@ -45,7 +47,14 @@ QStringList ScriptManager::discoverScripts() const
         }
         const auto entries = dir.entryList({QStringLiteral("*.py")}, QDir::Files, QDir::Name);
         for (const auto &entry : entries) {
-            scripts.append(dir.absoluteFilePath(entry));
+            const QString path = dir.absoluteFilePath(entry);
+            // The same directory can be found twice, for instance when the user
+            // directory is the installation one
+            if (seen.contains(path)) {
+                continue;
+            }
+            seen.insert(path);
+            scripts.append(path);
         }
     }
     return scripts;
@@ -73,4 +82,24 @@ void ScriptManager::loadPlugins()
             Q_EMIT scriptFailed(script, error);
         }
     }
+}
+
+QList<QAction *> ScriptManager::buildScriptActions(KActionCategory *category)
+{
+    QList<QAction *> actions;
+    const auto &engine = PythonEngine::instance();
+    for (const auto &id : engine.actionIds()) {
+        auto *action = new QAction(engine.actionLabel(id), this);
+        action->setData(id);
+        connect(action, &QAction::triggered, this, [this, id]() {
+            if (!PythonEngine::instance().triggerAction(id)) {
+                Q_EMIT scriptFailed(id, i18n("The script action failed"));
+            }
+        });
+        if (category) {
+            category->addAction(QStringLiteral("script_") + id, action);
+        }
+        actions.append(action);
+    }
+    return actions;
 }

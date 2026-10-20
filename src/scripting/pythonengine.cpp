@@ -40,6 +40,26 @@ PyObject *fromQString(const QString &value)
     return PyUnicode_FromString(value.toUtf8().constData());
 }
 
+/**
+ * @brief Creates the namespace a script runs in.
+ *
+ * The builtins must be set to the module, not to its dictionary, otherwise
+ * python fails with a type error.
+ */
+PyObject *createScriptNamespace()
+{
+    PyObject *globals = PyDict_New();
+    if (!globals) {
+        return nullptr;
+    }
+    PyObject *builtins = PyImport_ImportModule("builtins");
+    if (builtins) {
+        PyDict_SetItemString(globals, "__builtins__", builtins);
+        Py_DECREF(builtins);
+    }
+    return globals;
+}
+
 /** @brief Builds a python dictionary from a list of key and value pairs. */
 PyObject *fromPairs(const QList<QPair<QString, PyObject *>> &pairs)
 {
@@ -434,7 +454,8 @@ PyObject *moduleScriptsDirectory(PyObject *, PyObject *)
 
 PyMethodDef moduleMethods[] = {
     {"project", moduleProject, METH_NOARGS, "Return the project currently loaded in Kdenlive."},
-    {"register_action", moduleRegisterAction, METH_VARARGS, "Add an action to the Scripts menu, it takes an id, a label and a callback."},
+    {"register_action", moduleRegisterAction, METH_VARARGS,
+     "Add an action to the Scripts menu, it takes an id, a label and a callback. The callback is called with the project as its only argument."},
     {"scripts_directory", moduleScriptsDirectory, METH_NOARGS, "The directory where the user scripts are stored."},
     {nullptr, nullptr, 0, nullptr},
 };
@@ -526,8 +547,7 @@ bool PythonEngine::runString(const QString &code, const QString &name, QString *
         return false;
     }
     PyGILState_STATE gil = PyGILState_Ensure();
-    PyObject *globals = PyDict_New();
-    PyDict_SetItemString(globals, "__builtins__", PyEval_GetBuiltins());
+    PyObject *globals = createScriptNamespace();
     const QByteArray utf8Code = code.toUtf8();
     PyObject *result = PyRun_String(utf8Code.constData(), Py_file_input, globals, globals);
     bool ok = result != nullptr;
@@ -594,8 +614,7 @@ bool PythonEngine::importFile(const QString &path, QString *errorOutput)
     PyGILState_STATE gil = PyGILState_Ensure();
     const QString moduleName = QFileInfo(path).completeBaseName();
 
-    PyObject *globals = PyDict_New();
-    PyDict_SetItemString(globals, "__builtins__", PyEval_GetBuiltins());
+    PyObject *globals = createScriptNamespace();
     PyDict_SetItemString(globals, "__file__", fromQString(path));
     PyDict_SetItemString(globals, "__name__", fromQString(moduleName));
 
@@ -622,9 +641,24 @@ bool PythonEngine::importFile(const QString &path, QString *errorOutput)
         PyErr_NormalizeException(&type, &value, &traceback);
         errorOutput->clear();
         if (value) {
-            const char *utf8 = PyUnicode_AsUTF8(value);
-            if (utf8) {
-                *errorOutput = QString::fromUtf8(utf8);
+            // The value is the exception instance, its string form holds the message
+            PyObject *message = PyObject_Str(value);
+            if (message) {
+                const char *utf8 = PyUnicode_AsUTF8(message);
+                if (utf8) {
+                    *errorOutput = QString::fromUtf8(utf8);
+                }
+                Py_DECREF(message);
+            }
+        }
+        if (traceback) {
+            PyObject *tbStr = PyObject_Str(traceback);
+            if (tbStr) {
+                const char *utf8 = PyUnicode_AsUTF8(tbStr);
+                if (utf8) {
+                    *errorOutput += QStringLiteral("\n") + QString::fromUtf8(utf8);
+                }
+                Py_DECREF(tbStr);
             }
         }
         Py_XDECREF(type);

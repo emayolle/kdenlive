@@ -76,7 +76,8 @@ public:
      *
      * @param id A unique identifier for the action.
      * @param label The text shown in the menu.
-     * @param callback The Python callable, it takes the project as argument.
+     * @param callback The Python callable, it is called with the project as
+     *                its only argument.
      */
     void registerAction(const QString &id, const QString &label, void *callback);
 

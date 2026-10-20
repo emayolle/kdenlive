@@ -10,6 +10,9 @@
 #include <QString>
 #include <QStringList>
 
+class KActionCategory;
+class QAction;
+
 /**
  * @brief Finds and runs the user scripts.
  *
@@ -46,6 +49,17 @@ public:
      * A script that fails to load does not prevent the others from loading.
      */
     void loadPlugins();
+
+    /**
+     * @brief Builds the actions of the scripts registered in the engine.
+     *
+     * The actions are added to the given category, they trigger the python
+     * callback that the script registered.
+     *
+     * @param category The category the actions are added to.
+     * @return The actions that were created.
+     */
+    QList<QAction *> buildScriptActions(KActionCategory *category);
 
 Q_SIGNALS:
     /** @brief Emitted when a script could not be loaded. */
