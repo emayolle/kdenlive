@@ -274,5 +274,44 @@ TEST_CASE("Scripting api", "[Scripting]")
         REQUIRE(error.contains(QStringLiteral("failing.py")));
     }
 
+    SECTION("Load a plugin")
+    {
+        REQUIRE(PythonEngine::instance().initialize());
+        PythonEngine::instance().setApi(pCore.get());
+
+        // A plugin defines PLUGIN_ENTRY, it registers its actions there. This is
+        // how the scripts of the scripts directory are loaded.
+        QTemporaryDir directory;
+        REQUIRE(directory.isValid());
+        const QString path = directory.path() + QStringLiteral("/plugin.py");
+        QFile file(path);
+        REQUIRE(file.open(QIODevice::WriteOnly | QIODevice::Text));
+        file.write("import kdenlive\n"
+                   "def PLUGIN_ENTRY():\n"
+                   "    def action(project):\n"
+                   "        project.tracks()\n"
+                   "    kdenlive.register_action('plugintest', 'Plugin test', action)\n");
+        file.close();
+
+        QString error;
+        const bool success = PythonEngine::instance().importFile(path, &error);
+        INFO("The plugin failed with: " << error.toStdString());
+        REQUIRE(success);
+        REQUIRE(error.isEmpty());
+        REQUIRE(PythonEngine::instance().actionIds().contains(QStringLiteral("plugintest")));
+
+        // A plugin that fails reports its error
+        const QString failingPath = directory.path() + QStringLiteral("/failingplugin.py");
+        QFile failingFile(failingPath);
+        REQUIRE(failingFile.open(QIODevice::WriteOnly | QIODevice::Text));
+        failingFile.write("raise RuntimeError('the plugin failed')\n");
+        failingFile.close();
+
+        error.clear();
+        REQUIRE(!PythonEngine::instance().importFile(failingPath, &error));
+        REQUIRE(error.contains(QStringLiteral("the plugin failed")));
+        REQUIRE(error.contains(QStringLiteral("failingplugin.py")));
+    }
+
     pCore->projectManager()->closeCurrentDocument(false, false);
 }

@@ -117,6 +117,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QMenu>
 #include <QMenuBar>
 #include <QProxyStyle>
@@ -2648,6 +2649,13 @@ void MainWindow::loadScripts()
     }
     // The scripts work on the project, so they are loaded once it is ready
     PythonEngine::instance().setApi(pCore.get());
+    // A script that fails to load must not be silent, the user needs to know
+    connect(&ScriptManager::instance(), &ScriptManager::scriptFailed, this, [this](const QString &file, const QString &message) {
+        const QString name = QFileInfo(file).fileName();
+        qWarning() << "The script" << name << "failed:" << message;
+        // The status bar shows the first line of the error, the details are in the log
+        pCore->displayMessage(i18n("The script %1 failed: %2", name, message.section(QLatin1Char('\n'), 0, 0)), ErrorMessage, 5000);
+    });
     ScriptManager::instance().loadPlugins();
 
     // Show the actions the scripts registered
