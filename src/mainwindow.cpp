@@ -73,6 +73,9 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "scripting/pythonengine.h"
 #include "scripting/scriptmanager.h"
 #endif
+#ifdef HAVE_SCRIPT_EDITOR
+#include "scripting/scripteditor.h"
+#endif
 #include "titler/titlewidget.h"
 #include "transitions/transitionlist/view/transitionlistwidget.hpp"
 #include "transitions/transitionsrepository.hpp"
@@ -299,6 +302,18 @@ void MainWindow::init()
 
     auto dockGuides = addDock(i18n("Markers"), QStringLiteral("markers"), pCore->guidesList(), KDDockWidgets::Location_OnRight);
     dockGuides->close();
+
+#ifdef HAVE_SCRIPT_EDITOR
+    // The script editor, a panel to write and run a python script
+    m_scriptEditor = new ScriptEditor(this);
+    m_scriptEditorDock = addDock(i18n("Script Editor"), QStringLiteral("script_editor"), m_scriptEditor, KDDockWidgets::Location_OnRight);
+    m_scriptEditorDock->close();
+    connect(m_scriptEditor, &ScriptEditor::scriptFinished, this, [this](bool success) {
+        // The details are in the console of the panel, the status bar only tells
+        // whether the script worked
+        pCore->displayMessage(success ? i18n("The script ran successfully") : i18n("The script failed"), success ? InformationMessage : ErrorMessage, 3000);
+    });
+#endif
 
     // Screen grab widget
     QWidget *grabWidget = new QWidget(this);
@@ -3672,6 +3687,18 @@ void MainWindow::slotShowSubtitles(bool show)
     }
     pCore->currentDoc()->setSequenceProperty(uuid, QStringLiteral("hidesubtitle"), show ? 0 : 1);
 }
+
+#ifdef HAVE_SCRIPT_EDITOR
+void MainWindow::slotShowScriptEditor()
+{
+    if (!m_scriptEditorDock) {
+        return;
+    }
+    m_scriptEditorDock->open();
+    m_scriptEditorDock->setAsCurrentTab();
+    m_scriptEditor->focusEditor();
+}
+#endif
 
 void MainWindow::slotInitSubtitle(const QMap<QString, QString> &subProperties, const QUuid &uuid)
 {

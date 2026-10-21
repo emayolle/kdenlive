@@ -240,6 +240,8 @@
       <Separator/>
       <Menu name="scripts_menu">
         <text>Scripts</text>
+        <Action name="show_script_editor"/>
+        <Separator/>
         <ActionList name="script_actions"/>
       </Menu>
     </Menu>

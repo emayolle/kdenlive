@@ -1248,6 +1248,12 @@ void MainWindow::setupActions()
 
     addAction(QStringLiteral("extract_frame_to_clipboard"), i18n("Extract Frame to Clipboard"), pCore->monitorManager(),
               SLOT(slotExtractCurrentFrameToClipboard()), QIcon::fromTheme(QStringLiteral("insert-image")));
+
+#ifdef HAVE_SCRIPT_EDITOR
+    // The script editor panel, it is where the user writes and runs a script
+    QAction *scriptEditor = addAction(QStringLiteral("show_script_editor"), i18n("Script Editor"), QIcon::fromTheme(QStringLiteral("code-block")));
+    connect(scriptEditor, &QAction::triggered, this, &MainWindow::slotShowScriptEditor);
+#endif
 }
 
 void MainWindow::updateTimelineSelectionActions(const TimelineController::SelectionState &state)

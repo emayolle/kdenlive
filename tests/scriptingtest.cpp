@@ -212,6 +212,35 @@ TEST_CASE("Scripting api", "[Scripting]")
         REQUIRE(std::any_of(tracks.cbegin(), tracks.cend(), [](const ScriptTrack &track) { return track.name == QStringLiteral("Script track"); }));
     }
 
+    SECTION("Collect the output of a script")
+    {
+        REQUIRE(PythonEngine::instance().initialize());
+        PythonEngine::instance().setApi(pCore.get());
+
+        QString output;
+        QString error;
+        const bool success = PythonEngine::instance().runStringCapturing("print('hello')\n"
+                                                                         "import sys\n"
+                                                                         "print('on stderr', file=sys.stderr)\n",
+                                                                         "script", &output, &error);
+        INFO("The script failed with: " << error.toStdString());
+        REQUIRE(success);
+        REQUIRE(output.contains(QStringLiteral("hello")));
+        REQUIRE(output.contains(QStringLiteral("on stderr")));
+
+        // A failed script still reports what it printed before failing
+        output.clear();
+        error.clear();
+        REQUIRE(!PythonEngine::instance().runStringCapturing("print('before the failure')\nassert False, 'boom'\n", "script", &output, &error));
+        REQUIRE(output.contains(QStringLiteral("before the failure")));
+        REQUIRE(!error.isEmpty());
+
+        // The standard streams are restored, a later script still prints
+        output.clear();
+        REQUIRE(PythonEngine::instance().runStringCapturing("print('again')\n", "script", &output));
+        REQUIRE(output.contains(QStringLiteral("again")));
+    }
+
     SECTION("Register an action")
     {
         REQUIRE(PythonEngine::instance().initialize());

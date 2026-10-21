@@ -313,6 +313,14 @@ if(kdenlive_SCRIPTING_FOUND)
     target_compile_definitions(kdenliveLib PUBLIC HAVE_PYTHON)
 endif()
 
+# The script editor needs a text editor widget
+if(kdenlive_SCRIPT_EDITOR_FOUND)
+    target_link_libraries(kdenliveLib PUBLIC
+        KF${KF_MAJOR}::TextEditor
+        )
+    target_compile_definitions(kdenliveLib PUBLIC HAVE_SCRIPT_EDITOR)
+endif()
+
 if(KF6_VERSION VERSION_GREATER_EQUAL "6.8.0")
   target_link_libraries(kdenliveLib PUBLIC KF${KF_MAJOR}::I18nQml)
 endif()

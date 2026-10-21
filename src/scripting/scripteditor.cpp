@@ -1,0 +1,144 @@
+/*
+    SPDX-FileCopyrightText: 2026 Erwan Mayolle <erwan.mayolle.pro@gmail.com>
+
+    SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+*/
+
+#include "scripteditor.h"
+#include "pythonengine.h"
+
+#include <KTextEditor/Application>
+#include <KTextEditor/Document>
+#include <KTextEditor/View>
+
+#include <KLocalizedString>
+#include <QFontDatabase>
+#include <QHBoxLayout>
+#include <QIcon>
+#include <QPlainTextEdit>
+#include <QPushButton>
+#include <QSplitter>
+#include <QUrl>
+#include <QVBoxLayout>
+
+namespace {
+/** @brief The script the editor starts with, it shows what the api can do. */
+const char *const DEFAULT_SCRIPT = "# A script works on the project that is loaded\n"
+                                   "import kdenlive\n"
+                                   "\n"
+                                   "project = kdenlive.project()\n"
+                                   "print('Project:', project.name)\n"
+                                   "for track in project.tracks():\n"
+                                   "    print(track['tag'], track['name'])\n";
+} // namespace
+
+ScriptEditor::ScriptEditor(QWidget *parent)
+    : QWidget(parent)
+{
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(0, 0, 0, 0);
+
+    auto *toolbar = new QHBoxLayout;
+    m_runButton = new QPushButton(i18n("Run script"), this);
+    m_runButton->setIcon(QIcon::fromTheme(QStringLiteral("system-run")));
+    m_runButton->setToolTip(i18n("Run the script on the current project"));
+    toolbar->addWidget(m_runButton);
+    toolbar->addStretch(1);
+    layout->addLayout(toolbar);
+
+    auto *splitter = new QSplitter(Qt::Vertical, this);
+
+    m_application = new KTextEditor::Application(this);
+    m_document = m_application->openUrl(QUrl());
+    if (m_document) {
+        // Python highlighting, the syntax definitions come with the syntax
+        // highlighting package
+        m_document->setMode(QStringLiteral("Python"));
+        m_document->setText(QString::fromUtf8(DEFAULT_SCRIPT));
+    }
+    m_view = m_document ? m_document->createView(splitter) : nullptr;
+    if (m_view) {
+        m_view->setStatusBarEnabled(false);
+        splitter->addWidget(m_view);
+    }
+
+    m_console = new QPlainTextEdit(splitter);
+    m_console->setReadOnly(true);
+    m_console->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_console->setPlaceholderText(i18n("The output of the script appears here"));
+    splitter->addWidget(m_console);
+    splitter->setStretchFactor(0, 3);
+    splitter->setStretchFactor(1, 1);
+
+    layout->addWidget(splitter);
+
+    connect(m_runButton, &QPushButton::clicked, this, &ScriptEditor::runScript);
+}
+
+ScriptEditor::~ScriptEditor() = default;
+
+QString ScriptEditor::script() const
+{
+    return m_document ? m_document->text() : QString();
+}
+
+void ScriptEditor::setScript(const QString &code)
+{
+    if (m_document) {
+        m_document->setText(code);
+    }
+}
+
+void ScriptEditor::focusEditor()
+{
+    if (m_view) {
+        m_view->setFocus();
+    }
+}
+
+void ScriptEditor::appendOutput(const QString &text)
+{
+    if (text.isEmpty()) {
+        return;
+    }
+    // The console adds the line break itself, the trailing ones are dropped
+    QString content = text;
+    while (content.endsWith(QLatin1Char('\n'))) {
+        content.chop(1);
+    }
+    if (!content.isEmpty()) {
+        m_console->appendPlainText(content);
+    }
+}
+
+void ScriptEditor::appendError(const QString &text)
+{
+    if (text.isEmpty()) {
+        return;
+    }
+    QString content = text;
+    while (content.endsWith(QLatin1Char('\n'))) {
+        content.chop(1);
+    }
+    if (!content.isEmpty()) {
+        // The error is red, it is what the user has to look at
+        m_console->appendHtml(QStringLiteral("<span style=\"color:#c00000;\">%1</span>").arg(content.toHtmlEscaped()));
+    }
+}
+
+void ScriptEditor::runScript()
+{
+    const QString code = script();
+    if (code.trimmed().isEmpty()) {
+        return;
+    }
+    m_console->clear();
+    QString output;
+    QString error;
+    const bool success = PythonEngine::instance().runStringCapturing(code, QStringLiteral("script"), &output, &error);
+    appendOutput(output);
+    if (!success) {
+        appendError(error);
+    }
+    Q_EMIT scriptFinished(success);
+}

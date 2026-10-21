@@ -12,6 +12,7 @@
 
 #include <KLocalizedString>
 #include <QDir>
+#include <QTemporaryFile>
 #include <QVariantMap>
 
 #include <QFileInfo>
@@ -39,6 +40,20 @@ QString toQString(PyObject *object)
 PyObject *fromQString(const QString &value)
 {
     return PyUnicode_FromString(value.toUtf8().constData());
+}
+
+/** @brief Quotes a string so that it can be used in python source code. */
+QString quotePython(const QString &value)
+{
+    QString result = QStringLiteral("\"");
+    for (const QChar &c : value) {
+        if (c == QLatin1Char('\\') || c == QLatin1Char('"')) {
+            result += QLatin1Char('\\');
+        }
+        result += c;
+    }
+    result += QLatin1Char('"');
+    return result;
 }
 
 /** @brief Compiles and runs a script.
@@ -922,6 +937,59 @@ bool PythonEngine::runString(const QString &code, const QString &name, QString *
     Py_XDECREF(result);
     Py_DECREF(globals);
     PyGILState_Release(gil);
+    return ok;
+}
+
+bool PythonEngine::runStringCapturing(const QString &code, const QString &name, QString *output, QString *errorOutput)
+{
+    if (!d->initialized) {
+        if (errorOutput) {
+            *errorOutput = i18n("The Python interpreter is not running");
+        }
+        return false;
+    }
+    // The streams of the interpreter are redirected to temporary files, so that
+    // what the script prints can be shown to the user
+    QTemporaryFile outFile;
+    QTemporaryFile errFile;
+    if (!outFile.open() || !errFile.open()) {
+        return runString(code, name, errorOutput);
+    }
+    // The files are opened in text mode, a binary file would make the print fail.
+    // The names are quoted, they contain characters that python would read as code.
+    const QString redirect = QStringLiteral("import sys, io\n"
+                                            "sys.stdout = io.open(%1, 'w', encoding='utf-8', errors='replace', buffering=1)\n"
+                                            "sys.stderr = io.open(%2, 'w', encoding='utf-8', errors='replace', buffering=1)\n")
+                                 .arg(quotePython(outFile.fileName()))
+                                 .arg(quotePython(errFile.fileName()));
+    {
+        PyGILState_STATE gil = PyGILState_Ensure();
+        if (PyRun_SimpleString(redirect.toUtf8().constData()) != 0) {
+            PyErr_Clear();
+        }
+        PyGILState_Release(gil);
+    }
+    const bool ok = runString(code, name, errorOutput);
+    // Restore the standard streams
+    {
+        PyGILState_STATE gil = PyGILState_Ensure();
+        PyRun_SimpleString("import sys, io\n"
+                           "sys.stdout = io.TextIOWrapper(io.FileIO(1, 'w', closefd=False), encoding='utf-8', errors='replace', line_buffering=True)\n"
+                           "sys.stderr = io.TextIOWrapper(io.FileIO(2, 'w', closefd=False), encoding='utf-8', errors='replace', line_buffering=True)\n");
+        PyErr_Clear();
+        PyGILState_Release(gil);
+    }
+    if (output) {
+        outFile.flush();
+        outFile.seek(0);
+        *output = QString::fromUtf8(outFile.readAll());
+        errFile.flush();
+        errFile.seek(0);
+        const QString errors = QString::fromUtf8(errFile.readAll());
+        if (!errors.isEmpty()) {
+            *output += errors;
+        }
+    }
     return ok;
 }
 

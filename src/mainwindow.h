@@ -54,6 +54,7 @@ class Monitor;
 class Render;
 class RenderWidget;
 class ScopeManager;
+class ScriptEditor;
 class TimelineTabs;
 class TimelineWidget;
 class TimelineContainer;
@@ -269,6 +270,10 @@ private:
     KDDockWidgets::QtWidgets::DockWidget *m_projectBinDock{nullptr};
     KDDockWidgets::QtWidgets::DockWidget *m_effectListDock{nullptr};
     KDDockWidgets::QtWidgets::DockWidget *m_compositionListDock{nullptr};
+#ifdef HAVE_SCRIPT_EDITOR
+    KDDockWidgets::QtWidgets::DockWidget *m_scriptEditorDock{nullptr};
+    ScriptEditor *m_scriptEditor{nullptr};
+#endif
     TransitionListWidget *m_compositionList{nullptr};
     EffectListWidget *m_effectList2{nullptr};
 
@@ -421,6 +426,10 @@ public Q_SLOTS:
     void slotEditSubtitle(const QMap<QString, QString> &subProperties = {});
     /** @brief Show/hide subtitle track. */
     void slotShowSubtitles(bool show);
+#ifdef HAVE_SCRIPT_EDITOR
+    /** @brief Show the script editor panel. */
+    void slotShowScriptEditor();
+#endif
     void slotTranscode(const QStringList &urls = QStringList());
     /** @brief Open the transcode to edit friendly format dialog. */
     void slotFriendlyTranscode(const QString &binId, bool checkProfile);

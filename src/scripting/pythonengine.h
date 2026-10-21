@@ -54,6 +54,19 @@ public:
      */
     bool runString(const QString &code, const QString &name, QString *errorOutput = nullptr);
     /**
+     * @brief Runs a script and collects what it printed.
+     *
+     * The standard streams of the interpreter are redirected while the script
+     * runs, so that its output can be shown to the user.
+     *
+     * @param code The script source.
+     * @param name A name for the script, used in error messages.
+     * @param output Set with what the script printed.
+     * @param errorOutput Set with the error message if the script failed.
+     * @return true if the script ran without error.
+     */
+    bool runStringCapturing(const QString &code, const QString &name, QString *output, QString *errorOutput = nullptr);
+    /**
      * @brief Imports a script file as a module and runs its plugin entry point.
      *
      * The file is executed in its own namespace, with __name__ set to the file

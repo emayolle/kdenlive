@@ -4,19 +4,23 @@ Kdenlive can be driven by Python scripts. A script gets the project that is
 loaded in Kdenlive and edits it: adding clips to the bin, building a timeline,
 grouping clips, applying mixes, and saving the result.
 
-Scripts run in two ways:
+Scripts run in three ways:
 
 - from the interface, with the **Scripts** menu. The scripts of the user
   scripts directory are loaded at startup, a script that defines a
   `PLUGIN_ENTRY` function registers its actions there, and they show up in
   the menu.
+- from the **Script Editor** panel, **Tools → Scripts → Script Editor**. It is
+  a text editor with python syntax highlighting, a **Run script** button and a
+  console that shows what the script printed. It is the quickest way to try
+  something on the project that is currently open.
 - from the command line, without opening the interface:
 
   ```sh
   kdenlive --script my_script.py project.kdenlive
   ```
 
-The same code runs in both cases, the API is the same.
+The same code runs in all cases, the API is the same.
 
 ## Getting started
 

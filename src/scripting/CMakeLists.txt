@@ -7,9 +7,18 @@ if(NOT kdenlive_SCRIPTING_FOUND)
     return()
 endif()
 
-set(kdenlive_SRCS
-  ${kdenlive_SRCS}
+list(APPEND kdenlive_SRCS
   scripting/kdenliveapi.cpp
   scripting/pythonengine.cpp
-  scripting/scriptmanager.cpp
-  PARENT_SCOPE)
+  scripting/scriptmanager.cpp)
+
+# The script editor needs a text editor widget
+if(kdenlive_SCRIPT_EDITOR_FOUND)
+    list(APPEND kdenlive_SRCS
+      scripting/scripteditor.cpp
+      scripting/scripteditor.h)
+endif()
+
+# The variable is propagated in a single call, a second set() with PARENT_SCOPE
+# would replace the result of the first one
+set(kdenlive_SRCS ${kdenlive_SRCS} PARENT_SCOPE)

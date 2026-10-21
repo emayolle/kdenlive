@@ -132,6 +132,16 @@ find_package(Qt${QT_MAJOR_VERSION}
 
 find_package(KDDockWidgets-qt6 2.4.0 REQUIRED)
 
+# The script editor uses a text editor with python syntax highlighting, it is
+# optional so that kdenlive can be built without it.
+find_package(KF${KF_MAJOR} ${KF_DEP_VERSION} QUIET COMPONENTS TextEditor)
+if(KF${KF_MAJOR}TextEditor_FOUND)
+    message(STATUS "Found KF${KF_MAJOR}TextEditor, the script editor will be built")
+    set(kdenlive_SCRIPT_EDITOR_FOUND TRUE)
+else()
+    message(STATUS "KF${KF_MAJOR}TextEditor not found, the script editor will not be built")
+endif()
+
 if(USE_DBUS)
     find_package(KF${KF_MAJOR} ${KF_DEP_VERSION} REQUIRED COMPONENTS DBusAddons)
     find_package(Qt${QT_MAJOR_VERSION} REQUIRED COMPONENTS DBus)
