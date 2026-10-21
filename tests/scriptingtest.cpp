@@ -467,6 +467,7 @@ TEST_CASE("Scripting api", "[Scripting]")
         // the editor has the focus, and given back when it loses it
         ScriptEditor editor;
         QAction action(QStringLiteral("Test action"), &editor);
+        editor.addAction(&action);
         action.setShortcut(QKeySequence(QStringLiteral("A")));
         editor.updateWindowShortcuts(true);
         REQUIRE(action.shortcut().isEmpty());
@@ -475,6 +476,7 @@ TEST_CASE("Scripting api", "[Scripting]")
 
         // The shortcuts that are not in conflict are left alone
         QAction otherAction(QStringLiteral("Other action"), &editor);
+        editor.addAction(&otherAction);
         otherAction.setShortcut(QKeySequence(QStringLiteral("Ctrl+S")));
         editor.updateWindowShortcuts(true);
         REQUIRE(otherAction.shortcut() == QKeySequence(QStringLiteral("Ctrl+S")));

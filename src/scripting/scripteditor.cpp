@@ -12,7 +12,9 @@
 #include <KTextEditor/Editor>
 #include <KTextEditor/View>
 
+#include <KActionCollection>
 #include <KLocalizedString>
+#include <KXmlGuiWindow>
 #include <QApplication>
 #include <QFontDatabase>
 #include <QHBoxLayout>
@@ -22,6 +24,7 @@
 #include <QPushButton>
 #include <QShortcut>
 #include <QSplitter>
+#include <QTextEdit>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -146,14 +149,15 @@ void ScriptEditor::updateWindowShortcuts(bool inEditor)
         return;
     }
     // The actions of the window lose their shortcut while the editor has the
-    // focus, they would steal the keys
-    const QList<QAction *> actions = top->findChildren<QAction *>();
+    // focus, they would steal the keys. The actions of the editor are not in
+    // the collection of the window, they are left alone.
+    QList<QAction *> actions;
+    if (auto *xmlWindow = qobject_cast<KXmlGuiWindow *>(top)) {
+        actions = xmlWindow->actionCollection()->actions();
+    } else {
+        actions = top->actions();
+    }
     for (QAction *action : actions) {
-        // The actions of the editor are left alone, they are the ones that
-        // handle the keys
-        if (action->parent() == m_view || action->parent() == m_document) {
-            continue;
-        }
         if (inEditor) {
             if (m_savedShortcuts.contains(action)) {
                 continue;
@@ -170,6 +174,11 @@ void ScriptEditor::updateWindowShortcuts(bool inEditor)
     // The same for the shortcuts that are not actions
     const QList<QShortcut *> shortcuts = top->findChildren<QShortcut *>();
     for (QShortcut *shortcut : shortcuts) {
+        // The shortcuts of the editor are left alone
+        auto *parent = qobject_cast<QWidget *>(shortcut->parent());
+        if (parent && m_view->isAncestorOf(parent)) {
+            continue;
+        }
         if (inEditor) {
             if (m_disabledShortcuts.contains(shortcut)) {
                 continue;
@@ -237,8 +246,14 @@ void ScriptEditor::setScript(const QString &code)
 
 void ScriptEditor::focusEditor()
 {
-    if (m_view) {
-        m_view->setFocus();
+    if (!m_view) {
+        return;
+    }
+    m_view->setFocus();
+    // The text widget of the editor is the one that handles the keys, the view
+    // only inserts the text
+    if (auto *textWidget = m_view->findChild<QTextEdit *>()) {
+        textWidget->setFocus();
     }
 }
 

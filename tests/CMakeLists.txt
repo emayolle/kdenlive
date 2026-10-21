@@ -52,6 +52,12 @@ if(kdenlive_SCRIPTING_FOUND)
     list(APPEND KdenliveTest_SOURCES scriptingtest.cpp)
 endif()
 
+# The script editor needs the text editor widget
+if(kdenlive_SCRIPT_EDITOR_FOUND)
+    list(APPEND KdenliveTest_SOURCES scripteditortest.cpp)
+    find_package(Qt${QT_MAJOR_VERSION} REQUIRED COMPONENTS Test)
+endif()
+
 include(ECMAddTests)
 
 # Shared test library
@@ -69,6 +75,11 @@ foreach(_source ${KdenliveTest_SOURCES})
   )
   set_property(TARGET ${_targetname} PROPERTY CXX_STANDARD 14)
 endforeach()
+
+# The test of the script editor sends keys to the editor
+if(kdenlive_SCRIPT_EDITOR_FOUND)
+  target_link_libraries(scripteditortest Qt${QT_MAJOR_VERSION}::Test)
+endif()
 
 target_sources(timelinepreviewtest PRIVATE timelinepreviewmonitor.cpp)
 target_sources(timelinepreviewtestb PRIVATE timelinepreviewmonitor.cpp)
