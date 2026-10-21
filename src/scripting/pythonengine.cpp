@@ -13,6 +13,7 @@
 #include <KLocalizedString>
 #include <QDir>
 #include <QTemporaryFile>
+#include <QVariantList>
 #include <QVariantMap>
 
 #include <QFileInfo>
@@ -139,6 +140,43 @@ PyObject *fromVariantMap(const QVariantMap &values)
         }
     }
     return dict;
+}
+
+/**
+ * @brief Converts a list of variants to a python list.
+ *
+ * A map becomes a dictionary, the other values are converted to the matching
+ * python type.
+ */
+PyObject *fromVariantList(const QVariantList &values)
+{
+    PyObject *list = PyList_New(values.size());
+    if (!list) {
+        return nullptr;
+    }
+    for (int i = 0; i < values.size(); i++) {
+        const QVariant &value = values.at(i);
+        PyObject *item = nullptr;
+        if (value.typeId() == QMetaType::QVariantMap) {
+            item = fromVariantMap(value.toMap());
+        } else if (value.typeId() == QMetaType::Bool) {
+            item = PyBool_FromLong(value.toBool() ? 1 : 0);
+        } else if (value.typeId() == QMetaType::Int || value.typeId() == QMetaType::UInt || value.typeId() == QMetaType::LongLong ||
+                   value.typeId() == QMetaType::Long) {
+            item = PyLong_FromLongLong(value.toLongLong());
+        } else if (value.typeId() == QMetaType::Double || value.typeId() == QMetaType::Float) {
+            item = PyFloat_FromDouble(value.toDouble());
+        } else if (value.typeId() == QMetaType::QString) {
+            item = fromQString(value.toString());
+        } else {
+            item = Py_None;
+            Py_INCREF(item);
+        }
+        if (item) {
+            PyList_SET_ITEM(list, i, item);
+        }
+    }
+    return list;
 }
 
 /**
@@ -319,7 +357,7 @@ PyObject *projectAddClip(PyObject *self, PyObject *args)
     return fromQString(id);
 }
 
-PyObject *projectRemoveClip(PyObject *self, PyObject *args)
+PyObject *projectRemoveBinClip(PyObject *self, PyObject *args)
 {
     auto *api = projectApi(self);
     if (!api) {
@@ -632,7 +670,9 @@ PyObject *projectInsertClip(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "sii|s", &binId, &trackId, &position, &mode)) {
         return nullptr;
     }
-    const int id = api->insertClip(QString::fromUtf8(binId), trackId, position, mode ? QString::fromUtf8(mode) : QString());
+    // The default mode is the overwrite mode, like the interface does
+    const QString editMode = mode ? QString::fromUtf8(mode) : QStringLiteral("overwrite");
+    const int id = api->insertClip(QString::fromUtf8(binId), trackId, position, editMode);
     PyErr_Clear();
     return PyLong_FromLong(id);
 }
@@ -648,9 +688,100 @@ PyObject *projectRemoveClipAt(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "ii", &trackId, &position)) {
         return nullptr;
     }
-    const bool result = api->removeClip(trackId, position);
+    const bool result = api->removeClipAt(trackId, position);
     PyErr_Clear();
     return PyBool_FromLong(result);
+}
+
+PyObject *projectRemoveClip(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int clipId = -1;
+    if (!PyArg_ParseTuple(args, "i", &clipId)) {
+        return nullptr;
+    }
+    const bool result = api->removeClip(clipId);
+    PyErr_Clear();
+    return PyBool_FromLong(result);
+}
+
+PyObject *projectSplitClip(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int clipId = -1;
+    int position = 0;
+    if (!PyArg_ParseTuple(args, "ii", &clipId, &position)) {
+        return nullptr;
+    }
+    const int id = api->splitClip(clipId, position);
+    PyErr_Clear();
+    return PyLong_FromLong(id);
+}
+
+PyObject *projectRemoveTrack(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int trackId = -1;
+    if (!PyArg_ParseTuple(args, "i", &trackId)) {
+        return nullptr;
+    }
+    const bool result = api->removeTrack(trackId);
+    PyErr_Clear();
+    return PyBool_FromLong(result);
+}
+
+PyObject *projectAddEffect(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int clipId = -1;
+    const char *effectId = nullptr;
+    if (!PyArg_ParseTuple(args, "is", &clipId, &effectId)) {
+        return nullptr;
+    }
+    const bool result = api->addEffect(clipId, QString::fromUtf8(effectId));
+    PyErr_Clear();
+    return PyBool_FromLong(result);
+}
+
+PyObject *projectRemoveEffect(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int clipId = -1;
+    const char *effectId = nullptr;
+    if (!PyArg_ParseTuple(args, "is", &clipId, &effectId)) {
+        return nullptr;
+    }
+    const bool result = api->removeEffect(clipId, QString::fromUtf8(effectId));
+    PyErr_Clear();
+    return PyBool_FromLong(result);
+}
+
+PyObject *projectClipEffects(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int clipId = -1;
+    if (!PyArg_ParseTuple(args, "i", &clipId)) {
+        return nullptr;
+    }
+    return fromVariantList(api->clipEffects(clipId));
 }
 
 PyObject *projectTrackDuration(PyObject *self, PyObject *args)
@@ -684,7 +815,7 @@ PyObject *projectSave(PyObject *self, PyObject *args)
 PyMethodDef projectMethods[] = {
     {"bin_clips", projectBinClips, METH_NOARGS, "The clips of the project bin."},
     {"add_clip", projectAddClip, METH_VARARGS, "Import a file in the bin, returns its bin id."},
-    {"remove_clip", projectRemoveClip, METH_VARARGS, "Remove a clip from the bin."},
+    {"remove_bin_clip", projectRemoveBinClip, METH_VARARGS, "Remove a clip from the bin."},
     {"add_subclip", projectAddSubClip, METH_VARARGS, "Create a subclip of a bin clip, returns its bin id."},
     {"tracks", projectTracks, METH_NOARGS, "The tracks of the timeline."},
     {"add_track", projectAddTrack, METH_VARARGS, "Add a track to the timeline, returns its id. The second argument tells if it is an audio track."},
@@ -703,6 +834,12 @@ PyMethodDef projectMethods[] = {
     {"timeline_clips", projectTimelineClips, METH_VARARGS, "The clips of a track."},
     {"insert_clip", projectInsertClip, METH_VARARGS, "Insert a bin clip in the timeline, returns its id. The mode is normal, overwrite or insert."},
     {"remove_clip_at", projectRemoveClipAt, METH_VARARGS, "Remove the clip at a position of a track."},
+    {"remove_clip", projectRemoveClip, METH_VARARGS, "Remove a clip of the timeline."},
+    {"split_clip", projectSplitClip, METH_VARARGS, "Cut a clip in two at a position, returns the id of the new clip."},
+    {"remove_track", projectRemoveTrack, METH_VARARGS, "Remove a track of the timeline."},
+    {"add_effect", projectAddEffect, METH_VARARGS, "Add an effect to a clip."},
+    {"remove_effect", projectRemoveEffect, METH_VARARGS, "Remove an effect of a clip."},
+    {"clip_effects", projectClipEffects, METH_VARARGS, "The effects of a clip."},
     {"track_duration", projectTrackDuration, METH_VARARGS, "The duration of a track in frames."},
     {"save", projectSave, METH_VARARGS, "Save the project."},
     {nullptr, nullptr, 0, nullptr},

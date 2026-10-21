@@ -71,7 +71,7 @@ The `playhead` property can be set to move the playhead.
 |---------------------------------------|--------------------------------------------------------|
 | `bin_clips()`                         | The clips of the bin                                   |
 | `add_clip(url, name)`                 | Import a file in the bin, returns its bin id           |
-| `remove_clip(bin_id)`                 | Remove a clip from the bin                              |
+| `remove_bin_clip(bin_id)`             | Remove a clip from the bin                              |
 | `add_subclip(bin_id, in, out)`        | Create a subclip of a bin clip, returns its bin id     |
 
 A subclip is a zone of a bin clip, it is inserted in the timeline like any
@@ -100,15 +100,21 @@ The clips of the bin are dictionaries with the following keys:
 | `set_track_name(track_id, name)`    | Rename a track                                      |
 | `set_track_active(track_id, active)`| Make a track the active one                         |
 | `is_track_active(track_id)`         | Tell whether a track is the active one              |
+| `remove_track(track_id)`            | Remove a track, with the clips it holds             |
 | `timeline_clips(track_id)`          | The clips of a track                                |
 | `insert_clip(bin_id, track_id, position, mode)` | Insert a bin clip in the timeline, returns its id |
 | `remove_clip_at(track_id, position)` | Remove the clip at a position of a track            |
+| `remove_clip(clip_id)`              | Remove a clip                                       |
+| `split_clip(clip_id, position)`     | Cut a clip in two, returns the id of the new clip   |
 | `move_clip(clip_id, track_id, position)` | Move a clip to a track and a position           |
 | `group_clips(clip_ids)`             | Group clips together, returns the group id          |
 | `ungroup_clips(clip_ids)`           | Remove clips from their group                       |
 | `mix_clip(clip_id, mix_id, position)`| Mix a clip with the one next to it                   |
 | `clip_mix(clip_id)`                 | The mix of a clip, empty when it has none            |
 | `remove_clip_mix(clip_id)`          | Remove the mix of a clip                             |
+| `add_effect(clip_id, effect_id)`    | Add an effect to a clip                              |
+| `remove_effect(clip_id, effect_id)` | Remove an effect of a clip                          |
+| `clip_effects(clip_id)`             | The effects of a clip                                |
 | `track_duration(track_id)`          | The duration of a track, in frames                  |
 | `undo()`                            | Undo the last operation on the project              |
 | `redo()`                            | Redo the last undone operation                      |
@@ -178,8 +184,45 @@ the clip has no mix:
 | `other_clip_id` | int  | The id of the other clip of the mix               |
 | `duration`      | int  | The duration of the mix, in frames                |
 
-## Undo and redo
+### Cutting a clip
 
+A clip is cut in two with `split_clip`, like the razor of the interface does.
+The part that is before the cut keeps the id of the clip, the part that is
+after it is a new clip:
+
+```python
+new_clip_id = project.split_clip(clip_id, 150)
+```
+
+The cut must be inside the clip. The clips that are grouped with the clip are
+cut too, like the interface does.
+
+### Effects
+
+An effect is added to a clip with its id, the id of the MLT filter:
+
+```python
+project.add_effect(clip_id, "avfilter.hflip")
+project.remove_effect(clip_id, "avfilter.hflip")
+```
+
+The effects of a clip are listed with `clip_effects`:
+
+```python
+for effect in project.clip_effects(clip_id):
+    print(effect["id"], effect["name"], effect["enabled"])
+```
+
+| Key          | Type   | Description                                    |
+|--------------|--------|------------------------------------------------|
+| `id`         | string | The id of the effect, the one used to add it    |
+| `name`       | string | The name of the effect, for the user            |
+| `enabled`    | bool   | True when the effect is enabled                 |
+| `is_builtin` | bool   | True for the fades that Kdenlive adds itself   |
+
+An effect that does not exist is refused.
+
+## Undo and redo
 The operations of the api are added to the undo stack of the project, like
 the operations of the interface. A script can undo them:
 

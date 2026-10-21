@@ -150,7 +150,31 @@ public:
      */
     int insertClip(const QString &binId, int trackId, int position, const QString &mode = QStringLiteral("overwrite"));
     /** @brief Removes the clip of a track at the given position. */
-    bool removeClip(int trackId, int position);
+    bool removeClipAt(int trackId, int position);
+    /** @brief Removes a clip of the timeline. */
+    bool removeClip(int clipId);
+    /**
+     * @brief Cuts a clip in two at the given position.
+     *
+     * The part of the clip that is before the position keeps the id of the
+     * clip, the part that is after it is a new clip. Like the razor of the
+     * interface, the clips that are grouped with the clip are cut too.
+     *
+     * @param clipId The id of the clip to cut.
+     * @param position The position of the cut, in frames.
+     * @return The id of the new clip, -1 on failure.
+     */
+    int splitClip(int clipId, int position);
+    /**
+     * @brief Removes a track of the timeline.
+     *
+     * The clips of the track are removed too. The last track of the timeline
+     * cannot be removed.
+     *
+     * @param trackId The id of the track to remove.
+     * @return true if the track was removed.
+     */
+    bool removeTrack(int trackId);
 
     /**
      * @brief Moves a clip of the timeline.
@@ -214,6 +238,32 @@ public:
      * @return true if the mix was removed.
      */
     bool removeClipMix(int clipId);
+
+    /**
+     * @brief Adds an effect to a clip.
+     *
+     * @param clipId The id of the clip.
+     * @param effectId The id of the effect, for instance avfilter.hflip.
+     * @return true if the effect was added.
+     */
+    bool addEffect(int clipId, const QString &effectId);
+    /**
+     * @brief Removes an effect of a clip.
+     *
+     * @param clipId The id of the clip.
+     * @param effectId The id of the effect to remove.
+     * @return true if the effect was removed.
+     */
+    bool removeEffect(int clipId, const QString &effectId);
+    /**
+     * @brief The effects of a clip.
+     *
+     * Each effect is a map with the keys id, name, enabled and is_builtin.
+     *
+     * @param clipId The id of the clip.
+     * @return The effects of the clip, empty when it has none.
+     */
+    QVariantList clipEffects(int clipId) const;
 
     /**
      * @brief Makes a track the active one.

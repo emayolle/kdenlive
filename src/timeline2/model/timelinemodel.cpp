@@ -17,13 +17,14 @@
 #include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
 #include "effects/effectsrepository.hpp"
+#include "effects/effectstack/model/effectitemmodel.hpp"
 #include "effects/effectstack/model/effectstackmodel.hpp"
 #include "groupsmodel.hpp"
 #include "kdenlivesettings.h"
 #include "profiles/profilemodel.hpp"
 #include "snapmodel.hpp"
-#include "timeline2/view/previewmanager.h"
 #include "timeline2/view/dialogs/autotrackcreationdialog.h"
+#include "timeline2/view/previewmanager.h"
 #include "timelinefunctions.hpp"
 
 #include "monitor/monitormanager.h"
@@ -5799,6 +5800,35 @@ bool TimelineModel::removeFade(int clipId, bool fromStart)
 {
     Q_ASSERT(m_allClips.count(clipId) > 0);
     return m_allClips.at(clipId)->removeFade(fromStart);
+}
+
+QVariantList TimelineModel::getClipEffects(int clipId) const
+{
+    QVariantList result;
+    if (!isClip(clipId)) {
+        return result;
+    }
+    const auto stack = getClipEffectStackModel(clipId);
+    if (!stack) {
+        return result;
+    }
+    for (int row = 0; row < stack->rowCount(); row++) {
+        const QModelIndex index = stack->index(row, 0);
+        if (!index.isValid()) {
+            continue;
+        }
+        const auto item = std::static_pointer_cast<EffectItemModel>(stack->getItemById(static_cast<int>(index.internalId())));
+        if (!item) {
+            continue;
+        }
+        QVariantMap effect;
+        effect.insert(QStringLiteral("id"), item->getAssetId());
+        effect.insert(QStringLiteral("name"), index.data(Qt::DisplayRole).toString());
+        effect.insert(QStringLiteral("enabled"), item->isAssetEnabled());
+        effect.insert(QStringLiteral("is_builtin"), item->isBuiltIn());
+        result.append(effect);
+    }
+    return result;
 }
 
 std::shared_ptr<EffectStackModel> TimelineModel::getClipEffectStack(int itemId)

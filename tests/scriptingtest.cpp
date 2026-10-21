@@ -107,13 +107,13 @@ TEST_CASE("Scripting api", "[Scripting]")
         api.setTrackActive(trackId, true);
 
         // An unknown track is refused, the operation must not crash
-        REQUIRE(api.removeClip(9999, 0) == false);
+        REQUIRE(api.removeClipAt(9999, 0) == false);
         REQUIRE(!api.lastError().isEmpty());
-        REQUIRE(api.removeClip(-1, 0) == false);
+        REQUIRE(api.removeClipAt(-1, 0) == false);
         REQUIRE(!api.lastError().isEmpty());
 
         // A position that holds no clip is refused
-        REQUIRE(api.removeClip(trackId, 9999) == false);
+        REQUIRE(api.removeClipAt(trackId, 9999) == false);
         REQUIRE(!api.lastError().isEmpty());
 
         // An unknown edit mode is refused, it is not silently taken for another one
@@ -162,6 +162,94 @@ TEST_CASE("Scripting api", "[Scripting]")
         // And ungroup them
         REQUIRE(api.ungroupClips({clip1, clip2}));
         REQUIRE(api.ungroupClips({9999}) == false);
+        REQUIRE(!api.lastError().isEmpty());
+    }
+
+    SECTION("Cut a clip")
+    {
+        const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);
+        api.setTrackActive(trackId, true);
+        const int clipId = api.insertClip(binId, trackId, 0);
+        REQUIRE(clipId > -1);
+        REQUIRE(api.clips(trackId).size() == 1);
+
+        // The clip is cut in two, the part before the cut keeps the id
+        const int newClipId = api.splitClip(clipId, 50);
+        REQUIRE(newClipId > -1);
+        REQUIRE(newClipId != clipId);
+        const auto clips = api.clips(trackId);
+        REQUIRE(clips.size() == 2);
+        REQUIRE(clips.at(0).id == clipId);
+        REQUIRE(clips.at(0).position == 0);
+        REQUIRE(clips.at(0).duration == 50);
+        REQUIRE(clips.at(1).id == newClipId);
+        REQUIRE(clips.at(1).position == 50);
+        REQUIRE(clips.at(1).duration == 50);
+
+        // The cut must be inside the clip
+        REQUIRE(api.splitClip(clipId, 0) == -1);
+        REQUIRE(!api.lastError().isEmpty());
+        REQUIRE(api.splitClip(clipId, 50) == -1);
+        REQUIRE(!api.lastError().isEmpty());
+        REQUIRE(api.splitClip(clipId, 500) == -1);
+        REQUIRE(!api.lastError().isEmpty());
+        // An unknown clip cannot be cut
+        REQUIRE(api.splitClip(9999, 10) == -1);
+        REQUIRE(!api.lastError().isEmpty());
+    }
+
+    SECTION("Remove a clip and a track")
+    {
+        const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);
+        api.setTrackActive(trackId, true);
+        const int clipId = api.insertClip(binId, trackId, 0);
+        REQUIRE(clipId > -1);
+
+        // The clip is removed
+        REQUIRE(api.removeClip(clipId));
+        REQUIRE(api.clips(trackId).isEmpty());
+        // An unknown clip cannot be removed
+        REQUIRE(api.removeClip(clipId) == false);
+        REQUIRE(!api.lastError().isEmpty());
+
+        // The track is removed, with its clips
+        const int trackCount = api.tracks().size();
+        REQUIRE(api.removeTrack(trackId));
+        REQUIRE(api.tracks().size() == trackCount - 1);
+        // An unknown track cannot be removed
+        REQUIRE(api.removeTrack(9999) == false);
+        REQUIRE(!api.lastError().isEmpty());
+    }
+
+    SECTION("Add and remove an effect")
+    {
+        const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);
+        api.setTrackActive(trackId, true);
+        const int clipId = api.insertClip(binId, trackId, 0);
+        REQUIRE(clipId > -1);
+
+        // A new clip has no effect
+        REQUIRE(api.clipEffects(clipId).isEmpty());
+
+        // The effect is added to the clip
+        REQUIRE(api.addEffect(clipId, QStringLiteral("avfilter.hflip")));
+        const auto effects = api.clipEffects(clipId);
+        REQUIRE(effects.size() == 1);
+        REQUIRE(effects.first().toMap().value(QStringLiteral("id")).toString() == QStringLiteral("avfilter.hflip"));
+        REQUIRE(!effects.first().toMap().value(QStringLiteral("name")).toString().isEmpty());
+        REQUIRE(effects.first().toMap().value(QStringLiteral("enabled")).toBool());
+
+        // An unknown effect is refused, it would make the effect stack crash
+        REQUIRE(api.addEffect(clipId, QStringLiteral("nope")) == false);
+        REQUIRE(!api.lastError().isEmpty());
+        REQUIRE(api.addEffect(9999, QStringLiteral("avfilter.hflip")) == false);
+        REQUIRE(!api.lastError().isEmpty());
+
+        // The effect is removed
+        REQUIRE(api.removeEffect(clipId, QStringLiteral("avfilter.hflip")));
+        REQUIRE(api.clipEffects(clipId).isEmpty());
+        // An effect that the clip does not have cannot be removed
+        REQUIRE(api.removeEffect(clipId, QStringLiteral("avfilter.hflip")) == false);
         REQUIRE(!api.lastError().isEmpty());
     }
 

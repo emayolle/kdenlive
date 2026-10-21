@@ -312,6 +312,13 @@ public:
     */
     Q_INVOKABLE int getClipPosition(int clipId) const;
     Q_INVOKABLE QVariantList addClipEffect(int clipId, const QString &effectId, bool notify = true);
+    /**
+     * @brief The effects of a clip.
+     *
+     * Each effect is described by its id, the id used to add it, its name and
+     * whether it is enabled.
+     */
+    Q_INVOKABLE QVariantList getClipEffects(int clipId) const;
     Q_INVOKABLE bool addTrackEffect(int trackId, const QString &effectId);
     bool removeFade(int clipId, bool fromStart);
     Q_INVOKABLE bool copyTrackEffect(int trackId, const QString &sourceId);

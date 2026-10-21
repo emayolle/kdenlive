@@ -14,6 +14,7 @@
 #include "core.h"
 #include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
+#include "effects/effectsrepository.hpp"
 #include "profiles/profilemodel.hpp"
 #include "project/projectmanager.h"
 #include "timeline2/model/timelinefunctions.hpp"
@@ -668,7 +669,7 @@ bool KdenliveApi::redo()
     return true;
 }
 
-bool KdenliveApi::removeClip(int trackId, int position)
+bool KdenliveApi::removeClipAt(int trackId, int position)
 {
     setError({});
     if (!hasProject()) {
@@ -685,9 +686,153 @@ bool KdenliveApi::removeClip(int trackId, int position)
         setError(i18n("No clip at position %1 on track %2", position, trackId));
         return false;
     }
+    return removeClip(clipId);
+}
+
+bool KdenliveApi::removeClip(int clipId)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return false;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    if (!model->isClip(clipId)) {
+        setError(i18n("No such clip: %1", clipId));
+        return false;
+    }
     std::function<bool(void)> undo = []() { return true; };
     std::function<bool(void)> redo = []() { return true; };
-    return model->requestItemDeletion(clipId, undo, redo, true);
+    if (!model->requestItemDeletion(clipId, undo, redo, true)) {
+        setError(i18n("Could not remove clip %1", clipId));
+        return false;
+    }
+    m_core->pushUndo(undo, redo, i18n("Delete clip"));
+    return true;
+}
+
+int KdenliveApi::splitClip(int clipId, int position)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return -1;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    if (!model->isClip(clipId)) {
+        setError(i18n("No such clip: %1", clipId));
+        return -1;
+    }
+    const int start = model->getItemPosition(clipId);
+    const int duration = model->getItemPlaytime(clipId);
+    if (position <= start || position >= start + duration) {
+        setError(i18n("The cut must be inside the clip, between %1 and %2", start + 1, start + duration - 1));
+        return -1;
+    }
+    std::function<bool(void)> undo = []() { return true; };
+    std::function<bool(void)> redo = []() { return true; };
+    if (!TimelineFunctions::requestClipCut(model, clipId, position, undo, redo)) {
+        setError(i18n("Could not cut clip %1", clipId));
+        return -1;
+    }
+    m_core->pushUndo(undo, redo, i18n("Cut clip"));
+    // The part that is after the cut is the new clip
+    const int trackId = model->getItemTrackId(clipId);
+    for (const auto &clip : clips(trackId)) {
+        if (clip.position == position) {
+            return clip.id;
+        }
+    }
+    setError(i18n("Could not cut clip %1", clipId));
+    return -1;
+}
+
+bool KdenliveApi::removeTrack(int trackId)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return false;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    if (!model->isTrack(trackId)) {
+        setError(i18n("No such track: %1", trackId));
+        return false;
+    }
+    // The undo is handled by the model
+    if (!model->requestTrackDeletion(trackId)) {
+        setError(i18n("Could not remove track %1", trackId));
+        return false;
+    }
+    return true;
+}
+
+bool KdenliveApi::addEffect(int clipId, const QString &effectId)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return false;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    if (!model->isClip(clipId)) {
+        setError(i18n("No such clip: %1", clipId));
+        return false;
+    }
+    if (effectId.isEmpty()) {
+        setError(i18n("No effect given"));
+        return false;
+    }
+    // The effect must exist, adding an unknown one makes the effect stack crash
+    if (!EffectsRepository::get()->exists(effectId)) {
+        setError(i18n("No such effect: %1", effectId));
+        return false;
+    }
+    if (model->addClipEffect(clipId, effectId, false).isEmpty()) {
+        setError(i18n("Could not add effect %1 to clip %2", effectId, clipId));
+        return false;
+    }
+    return true;
+}
+
+bool KdenliveApi::removeEffect(int clipId, const QString &effectId)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return false;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    if (!model->isClip(clipId)) {
+        setError(i18n("No such clip: %1", clipId));
+        return false;
+    }
+    const auto effects = clipEffects(clipId);
+    bool found = false;
+    for (const auto &effect : effects) {
+        if (effect.toMap().value(QStringLiteral("id")).toString() == effectId) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        setError(i18n("Clip %1 has no effect %2", clipId, effectId));
+        return false;
+    }
+    model->removeEffectFromGroup(clipId, effectId, -1);
+    return true;
+}
+
+QVariantList KdenliveApi::clipEffects(int clipId) const
+{
+    if (!hasProject()) {
+        return {};
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    if (!model->isClip(clipId)) {
+        return {};
+    }
+    return model->getClipEffects(clipId);
 }
 
 int KdenliveApi::trackDuration(int trackId) const
