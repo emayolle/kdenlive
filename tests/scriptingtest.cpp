@@ -10,6 +10,9 @@
 #include "doc/kdenlivedoc.h"
 #include "scripting/kdenliveapi.h"
 #include "scripting/pythonengine.h"
+#ifdef HAVE_SCRIPT_EDITOR
+#include "scripting/scripteditor.h"
+#endif
 
 #include "core.h"
 
@@ -240,6 +243,39 @@ TEST_CASE("Scripting api", "[Scripting]")
         REQUIRE(PythonEngine::instance().runStringCapturing("print('again')\n", "script", &output));
         REQUIRE(output.contains(QStringLiteral("again")));
     }
+
+#ifdef HAVE_SCRIPT_EDITOR
+    SECTION("Run a script from the script editor")
+    {
+        REQUIRE(PythonEngine::instance().initialize());
+        PythonEngine::instance().setApi(pCore.get());
+
+        ScriptEditor editor;
+        // The editor has a document, it is the one that shows the python code
+        REQUIRE(!editor.script().isEmpty());
+
+        editor.setScript(QStringLiteral("print('from the editor')\n"));
+        REQUIRE(editor.script().contains(QStringLiteral("from the editor")));
+
+        bool finished = false;
+        bool success = false;
+        QObject::connect(&editor, &ScriptEditor::scriptFinished, &editor, [&](bool ok) {
+            finished = true;
+            success = ok;
+        });
+        editor.runScript();
+        REQUIRE(finished);
+        REQUIRE(success);
+
+        // A script that fails is reported
+        editor.setScript(QStringLiteral("assert False, 'the script failed'\n"));
+        finished = false;
+        success = true;
+        editor.runScript();
+        REQUIRE(finished);
+        REQUIRE(!success);
+    }
+#endif
 
     SECTION("Register an action")
     {

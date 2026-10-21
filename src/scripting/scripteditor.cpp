@@ -9,6 +9,7 @@
 
 #include <KTextEditor/Application>
 #include <KTextEditor/Document>
+#include <KTextEditor/Editor>
 #include <KTextEditor/View>
 
 #include <KLocalizedString>
@@ -49,7 +50,12 @@ ScriptEditor::ScriptEditor(QWidget *parent)
     auto *splitter = new QSplitter(Qt::Vertical, this);
 
     m_application = new KTextEditor::Application(this);
-    m_document = m_application->openUrl(QUrl());
+    auto *editor = KTextEditor::Editor::instance();
+    if (editor) {
+        // The editor needs to know the application it is embedded in
+        editor->setApplication(m_application);
+        m_document = editor->createDocument(this);
+    }
     if (m_document) {
         // Python highlighting, the syntax definitions come with the syntax
         // highlighting package
