@@ -6,9 +6,12 @@
 
 #pragma once
 
+#include <QMap>
 #include <QWidget>
 
+class QAction;
 class QKeyEvent;
+class QShortcut;
 
 namespace KTextEditor {
 class Application;
@@ -32,6 +35,14 @@ enum class ShortcutHandling {
  * not steal them.
  */
 ShortcutHandling shortcutHandling(const QKeyEvent *keyEvent);
+
+/**
+ * @brief Tells whether a shortcut of the window is in conflict with the editor.
+ *
+ * The shortcuts without modifier are the ones that are typed in the editor,
+ * and the ones that the editor uses for the copy and the paste.
+ */
+bool isConflictingShortcut(const QKeySequence &shortcut);
 } // namespace ScriptEditorInternal
 
 /**
@@ -74,10 +85,22 @@ private:
     void appendOutput(const QString &text);
     /** @brief Adds the error of the script to the console. */
     void appendError(const QString &text);
+    /**
+     * @brief Takes the shortcuts of the window away from the editor.
+     *
+     * Kdenlive has shortcuts for the keys that are used in the editor, they
+     * would steal them.
+     *
+     * @param inEditor True when the editor has the focus.
+     */
+    void updateWindowShortcuts(bool inEditor);
 
     KTextEditor::Application *m_application{nullptr};
     KTextEditor::Document *m_document{nullptr};
     KTextEditor::View *m_view{nullptr};
     QPlainTextEdit *m_console{nullptr};
     QPushButton *m_runButton{nullptr};
+    /** @brief The shortcuts of the window, they are taken away from the editor. */
+    QMap<QAction *, QKeySequence> m_savedShortcuts;
+    QList<QShortcut *> m_disabledShortcuts;
 };

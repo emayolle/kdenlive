@@ -451,6 +451,17 @@ TEST_CASE("Scripting api", "[Scripting]")
         // The other shortcuts of the window are left alone
         QKeyEvent other(QEvent::ShortcutOverride, Qt::Key_S, Qt::ControlModifier, QStringLiteral("s"));
         REQUIRE(shortcutHandling(&other) == ShortcutHandling::Pass);
+
+        // The shortcuts of the window that are in conflict with the editor
+        REQUIRE(isConflictingShortcut(QKeySequence::SelectAll));
+        REQUIRE(isConflictingShortcut(QKeySequence::Copy));
+        REQUIRE(isConflictingShortcut(QKeySequence::Paste));
+        // The keys that are typed in the editor
+        REQUIRE(isConflictingShortcut(QKeySequence(QStringLiteral("A"))));
+        REQUIRE(isConflictingShortcut(QKeySequence(QStringLiteral("S"))));
+        // The other shortcuts of the window are left alone
+        REQUIRE(!isConflictingShortcut(QKeySequence(QStringLiteral("Ctrl+S"))));
+        REQUIRE(!isConflictingShortcut(QKeySequence()));
     }
 
     SECTION("Run a script from the script editor")

@@ -20,6 +20,7 @@
 #include <QKeyEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QShortcut>
 #include <QSplitter>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -64,6 +65,24 @@ ShortcutHandling shortcutHandling(const QKeyEvent *keyEvent)
         return ShortcutHandling::Accept;
     }
     return ShortcutHandling::Pass;
+}
+bool isConflictingShortcut(const QKeySequence &shortcut)
+{
+    if (shortcut.isEmpty()) {
+        return false;
+    }
+    for (int i = 0; i < shortcut.count(); i++) {
+        const QKeyCombination combination = shortcut[i];
+        if (isEditingShortcut(combination)) {
+            return true;
+        }
+        // The shortcuts without modifier are the ones that are typed in the
+        // editor
+        if (combination.keyboardModifiers() == Qt::NoModifier) {
+            return true;
+        }
+    }
+    return false;
 }
 } // namespace ScriptEditorInternal
 
@@ -120,27 +139,77 @@ ScriptEditor::ScriptEditor(QWidget *parent)
     qApp->installEventFilter(this);
 }
 
+void ScriptEditor::updateWindowShortcuts(bool inEditor)
+{
+    QWidget *top = window();
+    if (!top) {
+        return;
+    }
+    // The actions of the window lose their shortcut while the editor has the
+    // focus, they would steal the keys
+    const QList<QAction *> actions = top->actions();
+    for (QAction *action : actions) {
+        if (!ScriptEditorInternal::isConflictingShortcut(action->shortcut())) {
+            continue;
+        }
+        if (inEditor) {
+            if (!m_savedShortcuts.contains(action)) {
+                m_savedShortcuts.insert(action, action->shortcut());
+                action->setShortcut(QKeySequence());
+            }
+        } else if (m_savedShortcuts.contains(action)) {
+            action->setShortcut(m_savedShortcuts.take(action));
+        }
+    }
+    // The same for the shortcuts that are not actions
+    const QList<QShortcut *> shortcuts = top->findChildren<QShortcut *>();
+    for (QShortcut *shortcut : shortcuts) {
+        if (!ScriptEditorInternal::isConflictingShortcut(shortcut->key())) {
+            continue;
+        }
+        if (inEditor) {
+            if (shortcut->isEnabled() && !m_disabledShortcuts.contains(shortcut)) {
+                m_disabledShortcuts.append(shortcut);
+                shortcut->setEnabled(false);
+            }
+        } else if (m_disabledShortcuts.contains(shortcut)) {
+            m_disabledShortcuts.removeOne(shortcut);
+            shortcut->setEnabled(true);
+        }
+    }
+}
+
 ScriptEditor::~ScriptEditor()
 {
+    // The shortcuts of the window must be given back
+    updateWindowShortcuts(false);
     qApp->removeEventFilter(this);
 }
 
 bool ScriptEditor::eventFilter(QObject *watched, QEvent *event)
 {
-    if (event->type() == QEvent::ShortcutOverride && m_view) {
-        // The focus can be on the text widget of the editor, not on the view
-        QWidget *focus = QApplication::focusWidget();
-        const bool inEditor = focus && (focus == m_view || m_view->isAncestorOf(focus));
-        if (inEditor) {
-            const auto *keyEvent = static_cast<QKeyEvent *>(event);
-            switch (ScriptEditorInternal::shortcutHandling(keyEvent)) {
-            case ScriptEditorInternal::ShortcutHandling::Accept:
-                // The key is handled by the editor, the window of Kdenlive must
-                // not see it
-                event->accept();
-                return true;
-            case ScriptEditorInternal::ShortcutHandling::Pass:
-                break;
+    if (m_view) {
+        if (event->type() == QEvent::FocusIn || event->type() == QEvent::FocusOut) {
+            // The focus can be on the text widget of the editor, not on the view
+            QWidget *focus = m_view->focusWidget();
+            const bool inEditor = focus && (focus == m_view || m_view->isAncestorOf(focus));
+            updateWindowShortcuts(inEditor);
+        }
+        if (event->type() == QEvent::ShortcutOverride) {
+            // The focus can be on the text widget of the editor, not on the view
+            QWidget *focus = m_view->focusWidget();
+            const bool inEditor = focus && (focus == m_view || m_view->isAncestorOf(focus));
+            if (inEditor) {
+                const auto *keyEvent = static_cast<QKeyEvent *>(event);
+                switch (ScriptEditorInternal::shortcutHandling(keyEvent)) {
+                case ScriptEditorInternal::ShortcutHandling::Accept:
+                    // The key is handled by the editor, the window of Kdenlive
+                    // must not see it
+                    event->accept();
+                    return true;
+                case ScriptEditorInternal::ShortcutHandling::Pass:
+                    break;
+                }
             }
         }
     }
