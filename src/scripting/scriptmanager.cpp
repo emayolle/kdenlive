@@ -11,6 +11,7 @@
 #include <KLocalizedString>
 #include <QAction>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 
 ScriptManager::ScriptManager(QObject *parent)
@@ -71,12 +72,29 @@ bool ScriptManager::runScript(const QString &path, QString *errorOutput)
     return PythonEngine::instance().runFile(path, errorOutput);
 }
 
+bool ScriptManager::isPlugin(const QString &path)
+{
+    // The scripts of the directories are not all plugins, some of them are
+    // command line tools. Only the ones that register actions are loaded, the
+    // others would fail on their optional dependencies.
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return false;
+    }
+    const QByteArray content = file.readAll();
+    file.close();
+    return content.contains("PLUGIN_ENTRY");
+}
+
 void ScriptManager::loadPlugins()
 {
     if (!PythonEngine::instance().isInitialized()) {
         return;
     }
     for (const auto &script : discoverScripts()) {
+        if (!isPlugin(script)) {
+            continue;
+        }
         QString error;
         if (!PythonEngine::instance().importFile(script, &error)) {
             Q_EMIT scriptFailed(script, error);

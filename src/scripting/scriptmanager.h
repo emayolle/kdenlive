@@ -46,9 +46,21 @@ public:
     /**
      * @brief Imports the scripts of the script directories.
      *
-     * A script that fails to load does not prevent the others from loading.
+     * Only the scripts that register actions are loaded, the other ones are
+     * command line tools. A script that fails to load does not prevent the
+     * others from loading.
      */
     void loadPlugins();
+
+    /**
+     * @brief Tells whether a script is a plugin.
+     *
+     * A plugin registers actions with a PLUGIN_ENTRY function.
+     *
+     * @param path The path of the script.
+     * @return true when the script is a plugin.
+     */
+    static bool isPlugin(const QString &path);
 
     /**
      * @brief Builds the actions of the scripts registered in the engine.
