@@ -88,6 +88,8 @@ public:
      * @param inEditor True when the editor has the focus.
      */
     void updateWindowShortcuts(bool inEditor);
+    /** @brief Tells whether an action belongs to the editor. */
+    bool isEditorAction(QAction *action) const;
 
 protected:
     /** @brief Keeps the editing shortcuts in the editor.
@@ -110,6 +112,8 @@ private:
     KTextEditor::Application *m_application{nullptr};
     KTextEditor::Document *m_document{nullptr};
     KTextEditor::View *m_view{nullptr};
+    /** @brief The text widget of the editor, it handles the keys. */
+    QWidget *m_textWidget{nullptr};
     QPlainTextEdit *m_console{nullptr};
     QPushButton *m_runButton{nullptr};
     /** @brief True when the editor has the focus, for the log. */

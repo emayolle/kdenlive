@@ -94,13 +94,18 @@ ShortcutHandling shortcutHandling(const QKeyEvent *keyEvent)
 }
 bool isConflictingShortcut(const QKeySequence &shortcut)
 {
-    // The shortcuts without modifier are the ones that are typed in the
-    // editor, Kdenlive has many of them for the timeline
     if (shortcut.isEmpty()) {
         return false;
     }
     for (int i = 0; i < shortcut.count(); i++) {
-        if (shortcut[i].keyboardModifiers() == Qt::NoModifier) {
+        const QKeyCombination combination = shortcut[i];
+        // The editing shortcuts of the editor
+        if (isEditingShortcut(combination)) {
+            return true;
+        }
+        // The shortcuts without modifier are the ones that are typed in the
+        // editor
+        if (combination.keyboardModifiers() == Qt::NoModifier) {
             return true;
         }
     }
@@ -141,6 +146,8 @@ ScriptEditor::ScriptEditor(QWidget *parent)
     if (m_view) {
         m_view->setStatusBarEnabled(false);
         splitter->addWidget(m_view);
+        // The text widget of the editor is the one that handles the keys
+        m_textWidget = m_textWidget;
     }
 
     m_console = new QPlainTextEdit(splitter);
@@ -168,17 +175,34 @@ ScriptEditor::ScriptEditor(QWidget *parent)
     qApp->installEventFilter(this);
 }
 
+bool ScriptEditor::isEditorAction(QAction *action) const
+{
+    // The actions of the editor are the ones of the view and the ones of its
+    // text widget. They have the same names as the actions of the window, they
+    // can only be told apart by the widget they belong to.
+    if (m_view && m_view->actions().contains(action)) {
+        return true;
+    }
+    if (m_textWidget && m_textWidget->actions().contains(action)) {
+        return true;
+    }
+    return false;
+}
+
 void ScriptEditor::updateWindowShortcuts(bool inEditor)
 {
     QWidget *top = window();
     if (!top) {
         return;
     }
-    // The actions of the window lose the shortcuts that would swallow the keys
-    // of the editor. The shortcuts with a modifier are left alone, the editor
-    // has the priority over the window for them.
+    // The actions of the window lose the shortcuts that would steal the keys
+    // of the editor. The actions of the editor are left alone, they are the
+    // ones that handle the keys.
     const QList<QAction *> actions = top->findChildren<QAction *>();
     for (QAction *action : actions) {
+        if (isEditorAction(action)) {
+            continue;
+        }
         if (inEditor) {
             if (m_savedShortcuts.contains(action)) {
                 continue;
@@ -225,7 +249,7 @@ ScriptEditor::~ScriptEditor()
 
 bool ScriptEditor::eventFilter(QObject *watched, QEvent *event)
 {
-    QWidget *textWidget = ScriptEditorInternal::textWidgetOf(m_view);
+    QWidget *textWidget = m_textWidget;
     if (textWidget) {
         // The focus is in the editor when the text widget has it
         const bool inEditor = textWidget->hasFocus() || (QApplication::focusWidget() == textWidget);
@@ -282,7 +306,7 @@ void ScriptEditor::focusEditor()
     m_view->setFocus();
     // The focus must be in the text widget of the editor, it is the one that
     // handles the keys
-    if (auto *textWidget = ScriptEditorInternal::textWidgetOf(m_view)) {
+    if (auto *textWidget = m_textWidget) {
         textWidget->setFocus();
     }
 }

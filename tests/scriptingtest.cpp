@@ -456,11 +456,11 @@ TEST_CASE("Scripting api", "[Scripting]")
         // are the ones without modifier
         REQUIRE(isConflictingShortcut(QKeySequence(QStringLiteral("A"))));
         REQUIRE(isConflictingShortcut(QKeySequence(QStringLiteral("S"))));
-        // The editor has the priority over the window for the shortcuts with a
-        // modifier, they are left alone
-        REQUIRE(!isConflictingShortcut(QKeySequence::SelectAll));
-        REQUIRE(!isConflictingShortcut(QKeySequence::Copy));
-        REQUIRE(!isConflictingShortcut(QKeySequence::Paste));
+        // The editing shortcuts of the editor are in conflict with the ones of
+        // the window
+        REQUIRE(isConflictingShortcut(QKeySequence::SelectAll));
+        REQUIRE(isConflictingShortcut(QKeySequence::Copy));
+        REQUIRE(isConflictingShortcut(QKeySequence::Paste));
         // The other shortcuts of the window are left alone
         REQUIRE(!isConflictingShortcut(QKeySequence(QStringLiteral("Ctrl+S"))));
         REQUIRE(!isConflictingShortcut(QKeySequence()));

@@ -63,7 +63,7 @@ TEST_CASE("Script editor shortcuts", "[Scripting]")
     REQUIRE(editorCopy != nullptr);
     REQUIRE(editorCopy->shortcut() == QKeySequence(QKeySequence::Copy));
 
-    // The actions of the window lose the shortcuts that would swallow the keys
+    // The actions of the window lose the shortcuts that would steal the keys
     // of the editor
     QAction windowAction(QStringLiteral("Window action"), &editor);
     editor.addAction(&windowAction);
@@ -73,8 +73,16 @@ TEST_CASE("Script editor shortcuts", "[Scripting]")
     // The action of the editor is left alone
     REQUIRE(editorCopy->shortcut() == QKeySequence(QKeySequence::Copy));
 
-    // The shortcuts with a modifier are left alone, the editor has the
-    // priority over the window for them
+    // The editing shortcuts of the window are taken away too, they would be
+    // ambiguous with the ones of the editor
+    QAction selectAllAction(QStringLiteral("Select all action"), &editor);
+    editor.addAction(&selectAllAction);
+    selectAllAction.setShortcut(QKeySequence(QKeySequence::SelectAll));
+    editor.updateWindowShortcuts(true);
+    REQUIRE(selectAllAction.shortcut().isEmpty());
+    REQUIRE(editorCopy->shortcut() == QKeySequence(QKeySequence::Copy));
+
+    // The shortcuts that are not in conflict are left alone
     QAction otherAction(QStringLiteral("Other action"), &editor);
     editor.addAction(&otherAction);
     otherAction.setShortcut(QKeySequence(QStringLiteral("Ctrl+S")));
@@ -84,4 +92,5 @@ TEST_CASE("Script editor shortcuts", "[Scripting]")
     // And everything is given back when the editor loses the focus
     editor.updateWindowShortcuts(false);
     REQUIRE(windowAction.shortcut() == QKeySequence(QStringLiteral("A")));
+    REQUIRE(selectAllAction.shortcut() == QKeySequence(QKeySequence::SelectAll));
 }
