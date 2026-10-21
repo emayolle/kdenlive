@@ -781,13 +781,23 @@ bool KdenliveDoc::saveSceneList(const QString &path, const QString &scene, bool 
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         qCWarning(KDENLIVE_LOG) << "//////  ERROR writing to file: " << path;
-        KMessageBox::error(QApplication::activeWindow(), i18n("Cannot write to file %1", path));
+        // Without the interface there is nobody to answer a dialog, the error
+        // is only reported in the log
+        if (pCore->window()) {
+            KMessageBox::error(QApplication::activeWindow(), i18n("Cannot write to file %1", path));
+        } else {
+            qWarning() << i18n("Cannot write to file %1", path);
+        }
         return false;
     }
 
     file.write(sceneData);
     if (!file.commit()) {
-        KMessageBox::error(QApplication::activeWindow(), i18n("Cannot write to file %1", path));
+        if (pCore->window()) {
+            KMessageBox::error(QApplication::activeWindow(), i18n("Cannot write to file %1", path));
+        } else {
+            qWarning() << i18n("Cannot write to file %1", path);
+        }
         return false;
     }
     (void)QtConcurrent::run(&KdenliveDoc::cleanupBackupFiles, this);

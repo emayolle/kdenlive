@@ -273,6 +273,16 @@ QString KdenliveApi::addSubClip(const QString &binId, int in, int out)
         setError(i18n("No such bin clip: %1", binId));
         return {};
     }
+    // The zone must be a valid range, a reversed or negative zone would create
+    // a clip with a negative duration
+    if (in < 0) {
+        setError(i18n("The start of the zone cannot be negative: %1", in));
+        return {};
+    }
+    if (out < in) {
+        setError(i18n("The end of the zone must be after its start: %1", out));
+        return {};
+    }
     QString id;
     // The parent is the clip the fragment is taken from
     if (!model->requestAddBinSubClip(id, in, out, {}, binId)) {
@@ -414,6 +424,10 @@ int KdenliveApi::insertClip(const QString &binId, int trackId, int position, con
     // In overwrite mode the content at the position is replaced, in insert mode
     // it is pushed to the right. In the normal mode of Kdenlive, a clip cannot
     // be dropped on top of another one, the operation is refused.
+    if (mode != QLatin1String("overwrite") && mode != QLatin1String("insert") && mode != QLatin1String("normal")) {
+        setError(i18n("Unknown edit mode: %1", mode));
+        return -1;
+    }
     bool overwrite = mode != QLatin1String("insert");
     if (mode == QLatin1String("normal")) {
         const int zoneEnd = position + (zone.y() - zone.x());
@@ -662,6 +676,10 @@ bool KdenliveApi::removeClip(int trackId, int position)
         return false;
     }
     const auto model = m_core->projectManager()->getTimeline();
+    if (!model->isTrack(trackId)) {
+        setError(i18n("No such track: %1", trackId));
+        return false;
+    }
     const int clipId = model->getClipByPosition(trackId, position);
     if (clipId < 0) {
         setError(i18n("No clip at position %1 on track %2", position, trackId));
@@ -692,7 +710,12 @@ int KdenliveApi::playheadPosition() const
 
 void KdenliveApi::setPlayheadPosition(int position)
 {
+    setError({});
     if (!hasProject()) {
+        return;
+    }
+    if (position < 0) {
+        setError(i18n("The playhead cannot be before the start: %1", position));
         return;
     }
     m_core->projectManager()->getTimeline()->setCursorPosition(position);
@@ -709,6 +732,12 @@ bool KdenliveApi::save(const QString &path)
     const QString target = path.isEmpty() ? projectPath() : path;
     if (target.isEmpty()) {
         setError(i18n("The project was never saved, a path is required"));
+        return false;
+    }
+    // The folder must exist, the save would fail otherwise
+    const QFileInfo targetInfo(target);
+    if (!QDir(targetInfo.absolutePath()).exists()) {
+        setError(i18n("The folder does not exist: %1", targetInfo.absolutePath()));
         return false;
     }
     if (m_core->window()) {

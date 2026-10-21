@@ -76,7 +76,8 @@ The `playhead` property can be set to move the playhead.
 
 A subclip is a zone of a bin clip, it is inserted in the timeline like any
 other bin clip. The frames of the zone are included, `in` is the first frame
-of the zone and `out` the last one.
+of the zone and `out` the last one. The zone must be a valid range, a negative
+start or an end before the start is refused.
 
 The clips of the bin are dictionaries with the following keys:
 
@@ -119,6 +120,8 @@ The `insert_clip` mode is one of:
 - `insert`: the content at the position is pushed to the right.
 - `normal`: the operation is refused when something is already at the position,
   like the normal edit mode of the interface does.
+
+Any other mode is refused.
 
 Only the active tracks receive the timeline operations, this is what the
 cursor of the interface does when it is moved. A track is active when it is
@@ -196,6 +199,7 @@ interface and the ones done by a script are in the same stack.
 | `kdenlive.project()`                  | The project currently loaded in Kdenlive        |
 | `kdenlive.register_action(id, label, callback)` | Add an action to the Scripts menu       |
 | `kdenlive.scripts_directory()`        | The directory where the user scripts are stored |
+| `kdenlive.show_message(text)`         | Show a message to the user                      |
 
 A script that registers an action gets the project as the only argument of
 its callback:
@@ -208,6 +212,24 @@ def add_title(project):
 
 kdenlive.register_action("add_title", "Add a title", add_title)
 ```
+
+## Errors
+
+The api does not raise exceptions, a failed operation returns a value that says
+it failed: `-1` for an id, an empty string for a bin id, `False` for a boolean.
+The reason of the failure is in the `error` property of the project:
+
+```python
+import kdenlive
+
+project = kdenlive.project()
+clip_id = project.insert_clip("42", 1, 0)
+if clip_id == -1:
+    print("The clip could not be inserted:", project.error)
+```
+
+The `error` property holds the message of the **last** operation, it is empty
+when the operation succeeded.
 
 ### A script of the scripts directory
 

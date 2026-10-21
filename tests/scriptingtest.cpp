@@ -100,6 +100,39 @@ TEST_CASE("Scripting api", "[Scripting]")
         REQUIRE(!api.lastError().isEmpty());
     }
 
+    SECTION("Refuse the invalid arguments")
+    {
+        const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);
+        REQUIRE(trackId > -1);
+        api.setTrackActive(trackId, true);
+
+        // An unknown track is refused, the operation must not crash
+        REQUIRE(api.removeClip(9999, 0) == false);
+        REQUIRE(!api.lastError().isEmpty());
+        REQUIRE(api.removeClip(-1, 0) == false);
+        REQUIRE(!api.lastError().isEmpty());
+
+        // A position that holds no clip is refused
+        REQUIRE(api.removeClip(trackId, 9999) == false);
+        REQUIRE(!api.lastError().isEmpty());
+
+        // An unknown edit mode is refused, it is not silently taken for another one
+        REQUIRE(api.insertClip(binId, trackId, 0, QStringLiteral("nope")) == -1);
+        REQUIRE(!api.lastError().isEmpty());
+
+        // A zone must be a valid range, a reversed one would create a clip with
+        // a negative duration
+        REQUIRE(api.addSubClip(binId, 100, 10).isEmpty());
+        REQUIRE(!api.lastError().isEmpty());
+        REQUIRE(api.addSubClip(binId, -5, 10).isEmpty());
+        REQUIRE(!api.lastError().isEmpty());
+
+        // The playhead cannot be before the start
+        api.setPlayheadPosition(-5);
+        REQUIRE(!api.lastError().isEmpty());
+        REQUIRE(api.playheadPosition() == 0);
+    }
+
     SECTION("Move and group the clips")
     {
         const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);
