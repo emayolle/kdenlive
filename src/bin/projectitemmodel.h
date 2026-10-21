@@ -247,6 +247,19 @@ public:
     QUuid uuid() const { return m_uuid; };
     /** @brief Retrieve the Bin clip id from a sequence uuid */
     const QString getSequenceId(const QUuid &uuid);
+    /**
+     * @brief Update the clip of the bin that holds a sequence.
+     *
+     * The clip of the bin is reloaded, so that it points to the current
+     * version of the sequence. It is needed when the tracks of a sequence
+     * change, otherwise the bin still shows the previous version of it.
+     *
+     * @param uuid The uuid of the sequence.
+     * @param durations The duration of the sequence, the video and the audio one.
+     * @param pos The position of the sequence, -1 to keep it.
+     * @param forceUpdate Force the update of the clip.
+     */
+    void updateSequenceClip(const QUuid &uuid, std::pair<int, int> durations, int pos = -1, bool forceUpdate = true);
     /** @brief Check if we already have a sequence with this uuid */
     bool hasSequenceId(const QUuid &uuid) const;
     /** @brief Return a project sequence clip from its uuid */

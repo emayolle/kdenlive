@@ -333,6 +333,9 @@ int KdenliveApi::addTrack(const QString &name, bool audio)
         setError(i18n("Could not add track"));
         return -1;
     }
+    // The clip of the bin that holds the sequence must point to the new version
+    // of it, otherwise the project is saved with an outdated sequence
+    m_core->projectItemModel()->updateSequenceClip(model->uuid(), model->durations(), -1, true);
     return id;
 }
 
@@ -767,6 +770,9 @@ bool KdenliveApi::removeTrack(int trackId)
         setError(i18n("Could not remove track %1", trackId));
         return false;
     }
+    // The clip of the bin that holds the sequence must point to the new version
+    // of it, otherwise the project is saved with an outdated sequence
+    m_core->projectItemModel()->updateSequenceClip(model->uuid(), model->durations(), -1, true);
     return true;
 }
 

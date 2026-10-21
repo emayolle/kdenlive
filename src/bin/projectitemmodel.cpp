@@ -948,6 +948,35 @@ const QString ProjectItemModel::getSequenceId(const QUuid &uuid)
     return m_binPlaylist->getSequenceId(uuid);
 }
 
+void ProjectItemModel::updateSequenceClip(const QUuid &uuid, std::pair<int, int> durations, int pos, bool forceUpdate)
+{
+    if (pos > -1) {
+        pCore->currentDoc()->setSequenceProperty(uuid, QStringLiteral("position"), pos);
+    }
+    const QString binId = getSequenceId(uuid);
+    if (binId.isEmpty()) {
+        return;
+    }
+    std::shared_ptr<ProjectClip> clip = getClipByBinID(binId);
+    if (!clip) {
+        return;
+    }
+    clip->setProducerProperty(QStringLiteral("kdenlive:maxduration"), durations.first);
+    if (pCore->currentDoc()->sequenceThumbRequiresRefresh(uuid) || forceUpdate) {
+        // Store general sequence properties
+        QMap<QString, QString> properties;
+        int duration = durations.second > 0 ? durations.second : durations.first;
+        properties.insert(QStringLiteral("length"), QString::number(duration));
+        properties.insert(QStringLiteral("out"), QString::number(duration - 1));
+        properties.insert(QStringLiteral("kdenlive:duration"), clip->framesToTime(duration));
+        clip->setProperties(properties);
+        // Reset thumbs producer
+        pCore->currentDoc()->sequenceThumbUpdated(uuid);
+        clip->reloadTimeline();
+        // Don't update thumb now, it causes too much lag on sequence switch or saving
+    }
+}
+
 int ProjectItemModel::getFreeFolderId()
 {
     while (!isIdFree(QString::number(++m_nextId))) {
@@ -1779,6 +1808,20 @@ const std::pair<QString, QString> ProjectItemModel::sceneList(const QString &roo
     // And we must use "avformat" instead of "avformat-novalidate" on project loading which causes a big delay on project opening
     // xmlConsumer.set("no_meta", 1);
     // Add active timeline as playlist of the main tractor so that when played through melt, the .kdenlive file reads the playlist
+    // The identity of the sequence is kept, the clip of the bin that holds it points to it
+    QString sequenceId;
+    QString sequenceUuid;
+    {
+        // The tractor of the sequence is rebuilt when the tracks change, it must
+        // keep the identity of the sequence, otherwise the clip of the bin that
+        // holds it points to a sequence that does not exist anymore and the
+        // project cannot be loaded back
+        const QUuid activeUuid = pCore->currentDoc()->activeUuid;
+        if (!activeUuid.isNull()) {
+            sequenceId = activeUuid.toString();
+            sequenceUuid = sequenceId;
+        }
+    }
     if (m_projectTractor->count() > 0) {
         m_projectTractor->remove_track(0);
     }
@@ -1787,7 +1830,34 @@ const std::pair<QString, QString> ProjectItemModel::sceneList(const QString &roo
         s = Mlt::Service(activeTractor->get_service());
     } else {
         std::unique_ptr<Mlt::Producer> cut(activeTractor->cut(0, duration));
+        // The cut is a new service, it must keep the identity of the original
+        // one, otherwise the clip of the bin that holds the sequence points to
+        // a sequence that does not exist anymore and the project cannot be
+        // loaded back
+        if (!sequenceId.isEmpty()) {
+            cut->set("id", sequenceId.toUtf8().constData());
+        }
+        if (!sequenceUuid.isEmpty()) {
+            cut->set("kdenlive:uuid", sequenceUuid.toUtf8().constData());
+        }
         m_projectTractor->insert_track(*cut.get(), 0);
+        if (!sequenceUuid.isEmpty()) {
+            // The clip of the bin that holds the sequence must point to the new
+            // version of the sequence, otherwise it points to a sequence that is
+            // not the one of the timeline anymore
+            const QString binId = getSequenceId(pCore->currentDoc()->activeUuid);
+            if (!binId.isEmpty()) {
+                const auto clip = getClipByBinID(binId);
+                if (clip) {
+                    Mlt::Service cutService(cut->get_service());
+                    std::shared_ptr<Mlt::Producer> producer(new Mlt::Producer(cutService));
+                    producer->set("id", sequenceId.toUtf8().constData());
+                    producer->set("kdenlive:uuid", sequenceUuid.toUtf8().constData());
+                    producer->set("kdenlive:producer_type", ClipType::Timeline);
+                    clip->setProducer(producer);
+                }
+            }
+        }
         s = Mlt::Service(m_projectTractor->get_service());
     }
 

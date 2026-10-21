@@ -6631,28 +6631,7 @@ QStringList Bin::sequenceReferencedClips(const QUuid &uuid) const
 
 void Bin::updateSequenceClip(const QUuid &uuid, std::pair<int, int> durations, int pos, bool forceUpdate)
 {
-    if (pos > -1) {
-        m_doc->setSequenceProperty(uuid, QStringLiteral("position"), pos);
-    }
-    const QString binId = m_itemModel->getSequenceId(uuid);
-    if (!binId.isEmpty() && m_doc->isModified()) {
-        std::shared_ptr<ProjectClip> clip = m_itemModel->getClipByBinID(binId);
-        Q_ASSERT(clip != nullptr);
-        clip->setProducerProperty(QStringLiteral("kdenlive:maxduration"), durations.first);
-        if (m_doc->sequenceThumbRequiresRefresh(uuid) || forceUpdate) {
-            // Store general sequence properties
-            QMap<QString, QString> properties;
-            int duration = durations.second > 0 ? durations.second : durations.first;
-            properties.insert(QStringLiteral("length"), QString::number(duration));
-            properties.insert(QStringLiteral("out"), QString::number(duration - 1));
-            properties.insert(QStringLiteral("kdenlive:duration"), clip->framesToTime(duration));
-            clip->setProperties(properties);
-            // Reset thumbs producer
-            m_doc->sequenceThumbUpdated(uuid);
-            clip->reloadTimeline();
-            // Don't update thumb now, it causes too much lag on sequence switch or saving
-        }
-    }
+    m_itemModel->updateSequenceClip(uuid, durations, pos, forceUpdate);
 }
 
 void Bin::updateTimelineOccurrences()

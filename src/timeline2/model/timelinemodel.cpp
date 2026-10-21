@@ -146,6 +146,9 @@ TimelineModel::TimelineModel(const QUuid &uuid, std::weak_ptr<DocUndoStack> undo
     m_blackClip->set("set.test_audio", 0);
     m_blackClip->set_in_and_out(0, TimelineModel::seekDuration);
     m_tractor->insert_track(*m_blackClip, 0);
+    // The tractor keeps the identity of the timeline, the clip of the bin that
+    // holds the sequence points to it
+    m_tractor->set("kdenlive:uuid", uuid.toString().toUtf8().constData());
     if (uuid != pCore->currentDoc()->uuid()) {
         // This is not the main tractor
         m_tractor->set("id", uuid.toString().toUtf8().constData());

@@ -133,6 +133,30 @@ TEST_CASE("Scripting api", "[Scripting]")
         REQUIRE(clip->getProducerProperty(QStringLiteral("kdenlive:clipname")) == QStringLiteral("My clip"));
     }
 
+    SECTION("The project written by a script can be loaded back")
+    {
+        // The clip of the bin that holds the sequence must point to the version
+        // of the sequence that is saved, otherwise the project cannot be loaded
+        // back
+        const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);
+        REQUIRE(trackId > -1);
+
+        QTemporaryDir directory;
+        REQUIRE(directory.isValid());
+        const QString path = directory.path() + QStringLiteral("/scripted.kdenlive");
+        REQUIRE(api.save(path));
+
+        // The saved project holds the track that was added
+        QFile file(path);
+        REQUIRE(file.open(QIODevice::ReadOnly | QIODevice::Text));
+        const QByteArray content = file.readAll();
+        REQUIRE(content.contains("Scripting track"));
+
+        // And the sequence of the project keeps its identity
+        REQUIRE(content.contains("kdenlive:projectTractor"));
+        REQUIRE(content.contains("kdenlive:uuid"));
+    }
+
     SECTION("Refuse the invalid arguments")
     {
         const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);
