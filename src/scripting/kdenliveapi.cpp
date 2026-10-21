@@ -477,6 +477,9 @@ bool KdenliveApi::moveClip(int clipId, int trackId, int position)
         setError(i18n("No such track: %1", trackId));
         return false;
     }
+    // The selection of the user would change the way the clip is moved, the
+    // operation of a script must always be the same
+    model->requestClearSelection();
     if (!model->requestClipMove(clipId, trackId, position, true, true, true)) {
         setError(i18n("Could not move clip %1", clipId));
         return false;
@@ -792,6 +795,9 @@ bool KdenliveApi::addEffect(int clipId, const QString &effectId)
         setError(i18n("No effect given"));
         return false;
     }
+    // The effect would be added to the selected clips instead of the one that
+    // is asked for, the operation of a script must always be the same
+    model->requestClearSelection();
     // The effect must exist, adding an unknown one makes the effect stack crash
     if (!EffectsRepository::get()->exists(effectId)) {
         setError(i18n("No such effect: %1", effectId));

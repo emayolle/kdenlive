@@ -13,9 +13,11 @@
 #include <KTextEditor/View>
 
 #include <KLocalizedString>
+#include <QApplication>
 #include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QKeyEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSplitter>
@@ -31,6 +33,21 @@ const char *const DEFAULT_SCRIPT = "# A script works on the project that is load
                                    "print('Project:', project.name)\n"
                                    "for track in project.tracks():\n"
                                    "    print(track['tag'], track['name'])\n";
+} // namespace
+
+namespace {
+/** @brief Tells whether a key combination is one of the editing shortcuts. */
+bool isEditingShortcut(const QKeyCombination &combination)
+{
+    static const QList<QKeySequence> sequences{QKeySequence::SelectAll, QKeySequence::Copy, QKeySequence::Cut,
+                                               QKeySequence::Paste,     QKeySequence::Undo, QKeySequence::Redo};
+    for (const QKeySequence &sequence : sequences) {
+        if (sequence.matches(combination)) {
+            return true;
+        }
+    }
+    return false;
+}
 } // namespace
 
 ScriptEditor::ScriptEditor(QWidget *parent)
@@ -79,9 +96,29 @@ ScriptEditor::ScriptEditor(QWidget *parent)
     layout->addWidget(splitter);
 
     connect(m_runButton, &QPushButton::clicked, this, &ScriptEditor::runScript);
+
+    // The editing shortcuts are watched, Kdenlive has its own shortcuts for the
+    // same keys and they would be triggered instead of the ones of the editor
+    qApp->installEventFilter(this);
 }
 
-ScriptEditor::~ScriptEditor() = default;
+ScriptEditor::~ScriptEditor()
+{
+    qApp->removeEventFilter(this);
+}
+
+bool ScriptEditor::eventFilter(QObject *watched, QEvent *event)
+{
+    if (event->type() == QEvent::ShortcutOverride && m_view && m_view->hasFocus()) {
+        const auto *keyEvent = static_cast<QKeyEvent *>(event);
+        if (isEditingShortcut(keyEvent->keyCombination())) {
+            // The editor handles the shortcut, the window of Kdenlive must not
+            event->accept();
+            return true;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
+}
 
 QString ScriptEditor::script() const
 {

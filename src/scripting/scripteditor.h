@@ -39,6 +39,14 @@ public:
     /** @brief Gives the keyboard focus to the text editor. */
     void focusEditor();
 
+protected:
+    /** @brief Keeps the editing shortcuts in the editor.
+     *
+     * Kdenlive has its own shortcuts for the same keys, they must not be
+     * triggered while the user writes a script.
+     */
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 Q_SIGNALS:
     /** @brief The script was run, the output is in the console. */
     void scriptFinished(bool success);
