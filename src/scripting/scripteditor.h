@@ -101,6 +101,8 @@ private:
     KTextEditor::View *m_view{nullptr};
     QPlainTextEdit *m_console{nullptr};
     QPushButton *m_runButton{nullptr};
+    /** @brief True when the editor has the focus, for the log. */
+    bool m_lastFocusInEditor{false};
     /** @brief The shortcuts of the window, they are taken away from the editor. */
     QMap<QAction *, QKeySequence> m_savedShortcuts;
     QList<QShortcut *> m_disabledShortcuts;

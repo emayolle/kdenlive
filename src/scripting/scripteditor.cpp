@@ -16,10 +16,12 @@
 #include <KLocalizedString>
 #include <KXmlGuiWindow>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QShortcut>
@@ -134,6 +136,13 @@ ScriptEditor::ScriptEditor(QWidget *parent)
 
     layout->addWidget(splitter);
 
+    // The version of the binary that runs, it is useful to know which build is
+    // used when something does not work
+    auto *version = new QLabel(QCoreApplication::applicationFilePath(), this);
+    version->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    version->setStyleSheet(QStringLiteral("color: palette(mid); font-size: 8pt;"));
+    layout->addWidget(version);
+
     connect(m_runButton, &QPushButton::clicked, this, &ScriptEditor::runScript);
 
     // The keys that are pressed in the editor are watched, Kdenlive has
@@ -210,17 +219,25 @@ bool ScriptEditor::eventFilter(QObject *watched, QEvent *event)
             QWidget *focus = m_view->focusWidget();
             const bool inEditor = focus && (focus == m_view || m_view->isAncestorOf(focus));
             updateWindowShortcuts(inEditor);
+            if (inEditor != m_lastFocusInEditor) {
+                m_lastFocusInEditor = inEditor;
+                appendOutput(QStringLiteral("[focus] %1 -> %2")
+                                 .arg(inEditor ? i18n("in the editor") : i18n("outside"))
+                                 .arg(focus ? focus->metaObject()->className() : i18n("none")));
+            }
         }
         if (event->type() == QEvent::ShortcutOverride) {
             // The focus can be on the text widget of the editor, not on the view
             QWidget *focus = m_view->focusWidget();
             const bool inEditor = focus && (focus == m_view || m_view->isAncestorOf(focus));
+            const auto *keyEvent = static_cast<QKeyEvent *>(event);
             if (inEditor) {
-                const auto *keyEvent = static_cast<QKeyEvent *>(event);
                 switch (ScriptEditorInternal::shortcutHandling(keyEvent)) {
                 case ScriptEditorInternal::ShortcutHandling::Accept:
                     // The key is handled by the editor, the window of Kdenlive
                     // must not see it
+                    appendOutput(
+                        QStringLiteral("[key] %1 : handled by the editor").arg(QKeySequence(keyEvent->keyCombination()).toString(QKeySequence::NativeText)));
                     event->accept();
                     return true;
                 case ScriptEditorInternal::ShortcutHandling::Pass:
