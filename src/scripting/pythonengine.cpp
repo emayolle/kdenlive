@@ -739,11 +739,26 @@ PyObject *moduleScriptsDirectory(PyObject *, PyObject *)
     return fromQString(PythonEngine::userScriptsDirectory());
 }
 
+/** @brief kdenlive.show_message(text) */
+PyObject *moduleShowMessage(PyObject *, PyObject *args)
+{
+    const char *text = nullptr;
+    if (!PyArg_ParseTuple(args, "s", &text)) {
+        return nullptr;
+    }
+    if (s_api) {
+        s_api->showMessage(QString::fromUtf8(text));
+    }
+    PyErr_Clear();
+    Py_RETURN_NONE;
+}
+
 PyMethodDef moduleMethods[] = {
     {"project", moduleProject, METH_NOARGS, "Return the project currently loaded in Kdenlive."},
     {"register_action", moduleRegisterAction, METH_VARARGS,
      "Add an action to the Scripts menu, it takes an id, a label and a callback. The callback is called with the project as its only argument."},
     {"scripts_directory", moduleScriptsDirectory, METH_NOARGS, "The directory where the user scripts are stored."},
+    {"show_message", moduleShowMessage, METH_VARARGS, "Show a message to the user."},
     {nullptr, nullptr, 0, nullptr},
 };
 

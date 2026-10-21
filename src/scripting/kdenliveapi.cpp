@@ -718,3 +718,11 @@ bool KdenliveApi::save(const QString &path)
     // Headless: the save path of the interface needs a MainWindow
     return projectManager->saveFileHeadless(target);
 }
+
+void KdenliveApi::showMessage(const QString &text)
+{
+    if (!m_core) {
+        return;
+    }
+    m_core->displayMessage(text, InformationMessage);
+}

@@ -252,6 +252,16 @@ public:
     /** @brief Saves the project. */
     bool save(const QString &path = {});
 
+    /**
+     * @brief Shows a message to the user.
+     *
+     * The message is shown in the status bar of the interface, it is printed in
+     * the log when Kdenlive runs without the interface.
+     *
+     * @param text The message to show.
+     */
+    void showMessage(const QString &text);
+
     /** @brief The last error message, empty if the last operation succeeded. */
     QString lastError() const;
 

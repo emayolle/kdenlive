@@ -7,8 +7,9 @@ grouping clips, applying mixes, and saving the result.
 Scripts run in two ways:
 
 - from the interface, with the **Scripts** menu. The scripts of the user
-  scripts directory are listed there, and a script can also add its own entry
-  with `kdenlive.register_action()`.
+  scripts directory are loaded at startup, a script that defines a
+  `PLUGIN_ENTRY` function registers its actions there, and they show up in
+  the menu.
 - from the command line, without opening the interface:
 
   ```sh
@@ -203,3 +204,30 @@ def add_title(project):
 
 kdenlive.register_action("add_title", "Add a title", add_title)
 ```
+
+### A script of the scripts directory
+
+The scripts of the user scripts directory are loaded when Kdenlive starts. A
+script that defines a `PLUGIN_ENTRY` function registers its actions there, they
+show up in the **Scripts** menu:
+
+```python
+import kdenlive
+
+def PLUGIN_ENTRY():
+    def add_title(project):
+        print(project.name)
+
+    kdenlive.register_action("add_title", "Add a title", add_title)
+```
+
+The scripts of the user scripts directory are:
+
+- `%LOCALAPPDATA%/kdenlive/scripts` on Windows
+- `~/.local/share/kdenlive/scripts` on Linux
+- `~/Library/Application Support/kdenlive/scripts` on macOS
+
+`kdenlive.scripts_directory()` returns the directory of the user.
+
+A script that fails to load is reported in the status bar, the details are in
+the log of the application.
