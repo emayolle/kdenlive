@@ -432,11 +432,21 @@ TEST_CASE("Scripting api", "[Scripting]")
         QKeyEvent typed(QEvent::ShortcutOverride, Qt::Key_A, Qt::NoModifier, QStringLiteral("a"));
         REQUIRE(shortcutHandling(&typed) == ShortcutHandling::Accept);
 
-        // The editing shortcuts are the ones of the editor
+        // The special keys are handled by the editor too
+        QKeyEvent backspace(QEvent::ShortcutOverride, Qt::Key_Backspace, Qt::NoModifier, QString());
+        REQUIRE(shortcutHandling(&backspace) == ShortcutHandling::Accept);
+        QKeyEvent del(QEvent::ShortcutOverride, Qt::Key_Delete, Qt::NoModifier, QString());
+        REQUIRE(shortcutHandling(&del) == ShortcutHandling::Accept);
+        QKeyEvent left(QEvent::ShortcutOverride, Qt::Key_Left, Qt::NoModifier, QString());
+        REQUIRE(shortcutHandling(&left) == ShortcutHandling::Accept);
+
+        // The editing shortcuts are handled by the editor
         QKeyEvent selectAll(QEvent::ShortcutOverride, Qt::Key_A, Qt::ControlModifier, QStringLiteral("a"));
-        REQUIRE(shortcutHandling(&selectAll) == ShortcutHandling::Ignore);
+        REQUIRE(shortcutHandling(&selectAll) == ShortcutHandling::Accept);
         QKeyEvent paste(QEvent::ShortcutOverride, Qt::Key_V, Qt::ControlModifier, QStringLiteral("v"));
-        REQUIRE(shortcutHandling(&paste) == ShortcutHandling::Ignore);
+        REQUIRE(shortcutHandling(&paste) == ShortcutHandling::Accept);
+        QKeyEvent cut(QEvent::ShortcutOverride, Qt::Key_X, Qt::ControlModifier, QStringLiteral("x"));
+        REQUIRE(shortcutHandling(&cut) == ShortcutHandling::Accept);
 
         // The other shortcuts of the window are left alone
         QKeyEvent other(QEvent::ShortcutOverride, Qt::Key_S, Qt::ControlModifier, QStringLiteral("s"));

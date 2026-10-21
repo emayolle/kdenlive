@@ -22,8 +22,7 @@ namespace ScriptEditorInternal {
 /** @brief What to do with a key that is pressed in the editor. */
 enum class ShortcutHandling {
     Pass,   /**< The window of Kdenlive handles the shortcut. */
-    Accept, /**< The key is typed in the editor. */
-    Ignore, /**< The editor has its own shortcut for this key. */
+    Accept, /**< The key is handled by the editor. */
 };
 
 /**
@@ -75,8 +74,6 @@ private:
     void appendOutput(const QString &text);
     /** @brief Adds the error of the script to the console. */
     void appendError(const QString &text);
-    /** @brief Gives the editing shortcuts to the editor. */
-    void installEditingShortcuts();
 
     KTextEditor::Application *m_application{nullptr};
     KTextEditor::Document *m_document{nullptr};
