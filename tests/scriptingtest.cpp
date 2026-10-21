@@ -19,6 +19,7 @@
 
 #include <QFile>
 #include <QImage>
+#include <QKeyEvent>
 #include <QTemporaryDir>
 
 using namespace fakeit;
@@ -423,6 +424,25 @@ TEST_CASE("Scripting api", "[Scripting]")
     }
 
 #ifdef HAVE_SCRIPT_EDITOR
+    SECTION("The editing shortcuts stay in the editor")
+    {
+        using namespace ScriptEditorInternal;
+
+        // A key that is typed in the editor must not be caught by the window
+        QKeyEvent typed(QEvent::ShortcutOverride, Qt::Key_A, Qt::NoModifier, QStringLiteral("a"));
+        REQUIRE(shortcutHandling(&typed) == ShortcutHandling::Accept);
+
+        // The editing shortcuts are the ones of the editor
+        QKeyEvent selectAll(QEvent::ShortcutOverride, Qt::Key_A, Qt::ControlModifier, QStringLiteral("a"));
+        REQUIRE(shortcutHandling(&selectAll) == ShortcutHandling::Ignore);
+        QKeyEvent paste(QEvent::ShortcutOverride, Qt::Key_V, Qt::ControlModifier, QStringLiteral("v"));
+        REQUIRE(shortcutHandling(&paste) == ShortcutHandling::Ignore);
+
+        // The other shortcuts of the window are left alone
+        QKeyEvent other(QEvent::ShortcutOverride, Qt::Key_S, Qt::ControlModifier, QStringLiteral("s"));
+        REQUIRE(shortcutHandling(&other) == ShortcutHandling::Pass);
+    }
+
     SECTION("Run a script from the script editor")
     {
         REQUIRE(PythonEngine::instance().initialize());

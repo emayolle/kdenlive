@@ -8,6 +8,8 @@
 
 #include <QWidget>
 
+class QKeyEvent;
+
 namespace KTextEditor {
 class Application;
 class Document;
@@ -15,6 +17,23 @@ class View;
 } // namespace KTextEditor
 class QPlainTextEdit;
 class QPushButton;
+
+namespace ScriptEditorInternal {
+/** @brief What to do with a key that is pressed in the editor. */
+enum class ShortcutHandling {
+    Pass,   /**< The window of Kdenlive handles the shortcut. */
+    Accept, /**< The key is typed in the editor. */
+    Ignore, /**< The editor has its own shortcut for this key. */
+};
+
+/**
+ * @brief Tells what to do with a key that is pressed in the editor.
+ *
+ * Kdenlive has shortcuts for the keys that are used in the editor, they must
+ * not steal them.
+ */
+ShortcutHandling shortcutHandling(const QKeyEvent *keyEvent);
+} // namespace ScriptEditorInternal
 
 /**
  * @brief A panel to write and run a python script.
@@ -56,6 +75,8 @@ private:
     void appendOutput(const QString &text);
     /** @brief Adds the error of the script to the console. */
     void appendError(const QString &text);
+    /** @brief Gives the editing shortcuts to the editor. */
+    void installEditingShortcuts();
 
     KTextEditor::Application *m_application{nullptr};
     KTextEditor::Document *m_document{nullptr};

@@ -20,6 +20,7 @@
 #include <QKeyEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QShortcut>
 #include <QSplitter>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -49,6 +50,23 @@ bool isEditingShortcut(const QKeyCombination &combination)
     return false;
 }
 } // namespace
+
+namespace ScriptEditorInternal {
+ShortcutHandling shortcutHandling(const QKeyEvent *keyEvent)
+{
+    if (isEditingShortcut(keyEvent->keyCombination())) {
+        // The editor has its own shortcut for this key, the window must not
+        // handle it
+        return ShortcutHandling::Ignore;
+    }
+    if (keyEvent->modifiers() == Qt::NoModifier && !keyEvent->text().isEmpty()) {
+        // The key is typed in the editor. Kdenlive has shortcuts without
+        // modifier, they would swallow the keys.
+        return ShortcutHandling::Accept;
+    }
+    return ShortcutHandling::Pass;
+}
+} // namespace ScriptEditorInternal
 
 ScriptEditor::ScriptEditor(QWidget *parent)
     : QWidget(parent)
@@ -97,9 +115,36 @@ ScriptEditor::ScriptEditor(QWidget *parent)
 
     connect(m_runButton, &QPushButton::clicked, this, &ScriptEditor::runScript);
 
+    // Kdenlive has shortcuts for the same keys, they have the priority over
+    // the ones of the window. The shortcuts of the editor are given to the
+    // editor itself, so that the keys are handled there.
+    installEditingShortcuts();
+
     // The editing shortcuts are watched, Kdenlive has its own shortcuts for the
     // same keys and they would be triggered instead of the ones of the editor
     qApp->installEventFilter(this);
+}
+
+void ScriptEditor::installEditingShortcuts()
+{
+    static const QList<QKeySequence> sequences{QKeySequence::SelectAll, QKeySequence::Copy, QKeySequence::Cut,
+                                               QKeySequence::Paste,     QKeySequence::Undo, QKeySequence::Redo};
+    for (const QKeySequence &sequence : sequences) {
+        // The action of the editor is the one that has the shortcut
+        QAction *editorAction = nullptr;
+        for (QAction *action : m_view->actions()) {
+            if (action->shortcut() == sequence) {
+                editorAction = action;
+                break;
+            }
+        }
+        if (!editorAction) {
+            continue;
+        }
+        auto *shortcut = new QShortcut(sequence, m_view);
+        shortcut->setContext(Qt::WidgetShortcut);
+        connect(shortcut, &QShortcut::activated, editorAction, &QAction::trigger);
+    }
 }
 
 ScriptEditor::~ScriptEditor()
@@ -109,12 +154,26 @@ ScriptEditor::~ScriptEditor()
 
 bool ScriptEditor::eventFilter(QObject *watched, QEvent *event)
 {
-    if (event->type() == QEvent::ShortcutOverride && m_view && m_view->hasFocus()) {
-        const auto *keyEvent = static_cast<QKeyEvent *>(event);
-        if (isEditingShortcut(keyEvent->keyCombination())) {
-            // The editor handles the shortcut, the window of Kdenlive must not
-            event->accept();
-            return true;
+    if (event->type() == QEvent::ShortcutOverride && m_view) {
+        // The focus can be on the text widget of the editor, not on the view
+        QWidget *focus = QApplication::focusWidget();
+        const bool inEditor = focus && (focus == m_view || m_view->isAncestorOf(focus));
+        if (inEditor) {
+            const auto *keyEvent = static_cast<QKeyEvent *>(event);
+            switch (ScriptEditorInternal::shortcutHandling(keyEvent)) {
+            case ScriptEditorInternal::ShortcutHandling::Ignore:
+                // The editor has its own shortcut for this key, the window of
+                // Kdenlive must not handle it. The shortcut of the editor is
+                // triggered because the event is ignored.
+                event->ignore();
+                return true;
+            case ScriptEditorInternal::ShortcutHandling::Accept:
+                // The key is typed in the editor
+                event->accept();
+                return true;
+            case ScriptEditorInternal::ShortcutHandling::Pass:
+                break;
+            }
         }
     }
     return QWidget::eventFilter(watched, event);
