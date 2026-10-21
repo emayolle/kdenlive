@@ -68,6 +68,16 @@ public:
     /** @brief Gives the keyboard focus to the text editor. */
     void focusEditor();
 
+    /**
+     * @brief Takes the shortcuts of the window away from the editor.
+     *
+     * Kdenlive has shortcuts for the keys that are used in the editor, they
+     * would steal them.
+     *
+     * @param inEditor True when the editor has the focus.
+     */
+    void updateWindowShortcuts(bool inEditor);
+
 protected:
     /** @brief Keeps the editing shortcuts in the editor.
      *
@@ -85,15 +95,6 @@ private:
     void appendOutput(const QString &text);
     /** @brief Adds the error of the script to the console. */
     void appendError(const QString &text);
-    /**
-     * @brief Takes the shortcuts of the window away from the editor.
-     *
-     * Kdenlive has shortcuts for the keys that are used in the editor, they
-     * would steal them.
-     *
-     * @param inEditor True when the editor has the focus.
-     */
-    void updateWindowShortcuts(bool inEditor);
 
     KTextEditor::Application *m_application{nullptr};
     KTextEditor::Document *m_document{nullptr};

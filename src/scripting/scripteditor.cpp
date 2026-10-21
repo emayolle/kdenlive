@@ -147,16 +147,22 @@ void ScriptEditor::updateWindowShortcuts(bool inEditor)
     }
     // The actions of the window lose their shortcut while the editor has the
     // focus, they would steal the keys
-    const QList<QAction *> actions = top->actions();
+    const QList<QAction *> actions = top->findChildren<QAction *>();
     for (QAction *action : actions) {
-        if (!ScriptEditorInternal::isConflictingShortcut(action->shortcut())) {
+        // The actions of the editor are left alone, they are the ones that
+        // handle the keys
+        if (action->parent() == m_view || action->parent() == m_document) {
             continue;
         }
         if (inEditor) {
-            if (!m_savedShortcuts.contains(action)) {
-                m_savedShortcuts.insert(action, action->shortcut());
-                action->setShortcut(QKeySequence());
+            if (m_savedShortcuts.contains(action)) {
+                continue;
             }
+            if (!ScriptEditorInternal::isConflictingShortcut(action->shortcut())) {
+                continue;
+            }
+            m_savedShortcuts.insert(action, action->shortcut());
+            action->setShortcut(QKeySequence());
         } else if (m_savedShortcuts.contains(action)) {
             action->setShortcut(m_savedShortcuts.take(action));
         }
@@ -164,14 +170,15 @@ void ScriptEditor::updateWindowShortcuts(bool inEditor)
     // The same for the shortcuts that are not actions
     const QList<QShortcut *> shortcuts = top->findChildren<QShortcut *>();
     for (QShortcut *shortcut : shortcuts) {
-        if (!ScriptEditorInternal::isConflictingShortcut(shortcut->key())) {
-            continue;
-        }
         if (inEditor) {
-            if (shortcut->isEnabled() && !m_disabledShortcuts.contains(shortcut)) {
-                m_disabledShortcuts.append(shortcut);
-                shortcut->setEnabled(false);
+            if (m_disabledShortcuts.contains(shortcut)) {
+                continue;
             }
+            if (!ScriptEditorInternal::isConflictingShortcut(shortcut->key())) {
+                continue;
+            }
+            m_disabledShortcuts.append(shortcut);
+            shortcut->setEnabled(false);
         } else if (m_disabledShortcuts.contains(shortcut)) {
             m_disabledShortcuts.removeOne(shortcut);
             shortcut->setEnabled(true);

@@ -462,6 +462,23 @@ TEST_CASE("Scripting api", "[Scripting]")
         // The other shortcuts of the window are left alone
         REQUIRE(!isConflictingShortcut(QKeySequence(QStringLiteral("Ctrl+S"))));
         REQUIRE(!isConflictingShortcut(QKeySequence()));
+
+        // The shortcuts of the window that are in conflict are taken away while
+        // the editor has the focus, and given back when it loses it
+        ScriptEditor editor;
+        QAction action(QStringLiteral("Test action"), &editor);
+        action.setShortcut(QKeySequence(QStringLiteral("A")));
+        editor.updateWindowShortcuts(true);
+        REQUIRE(action.shortcut().isEmpty());
+        editor.updateWindowShortcuts(false);
+        REQUIRE(action.shortcut() == QKeySequence(QStringLiteral("A")));
+
+        // The shortcuts that are not in conflict are left alone
+        QAction otherAction(QStringLiteral("Other action"), &editor);
+        otherAction.setShortcut(QKeySequence(QStringLiteral("Ctrl+S")));
+        editor.updateWindowShortcuts(true);
+        REQUIRE(otherAction.shortcut() == QKeySequence(QStringLiteral("Ctrl+S")));
+        editor.updateWindowShortcuts(false);
     }
 
     SECTION("Run a script from the script editor")
