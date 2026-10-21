@@ -10,6 +10,7 @@
 #include <QWidget>
 
 class QAction;
+class KActionCategory;
 class QKeyEvent;
 class QShortcut;
 
@@ -54,6 +55,14 @@ bool isConflictingShortcut(const QKeySequence &shortcut);
  * text.
  */
 QWidget *textWidgetOf(KTextEditor::View *view);
+
+/**
+ * @brief The actions of a window, the ones of its categories included.
+ *
+ * The actions of Kdenlive are in the action categories, they are not in the
+ * collection of the window.
+ */
+QList<QAction *> windowActions(QWidget *window);
 } // namespace ScriptEditorInternal
 
 /**

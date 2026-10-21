@@ -12,6 +12,7 @@
 #include <KTextEditor/Editor>
 #include <KTextEditor/View>
 
+#include <KActionCategory>
 #include <KActionCollection>
 #include <KLocalizedString>
 #include <KXmlGuiWindow>
@@ -75,6 +76,23 @@ QWidget *textWidgetOf(KTextEditor::View *view)
         }
     }
     return nullptr;
+}
+
+QList<QAction *> windowActions(QWidget *window)
+{
+    QList<QAction *> actions = window->actions();
+    auto *xmlWindow = qobject_cast<KXmlGuiWindow *>(window);
+    if (!xmlWindow) {
+        return actions;
+    }
+    actions.append(xmlWindow->actionCollection()->actions());
+    // The actions of Kdenlive are in the categories, they are not in the
+    // collection of the window
+    const auto categories = xmlWindow->actionCollection()->findChildren<KActionCategory *>();
+    for (KActionCategory *category : categories) {
+        actions.append(category->actions());
+    }
+    return actions;
 }
 
 ShortcutHandling shortcutHandling(const QKeyEvent *keyEvent)
@@ -198,7 +216,7 @@ void ScriptEditor::updateWindowShortcuts(bool inEditor)
     // The actions of the window lose the shortcuts that would steal the keys
     // of the editor. The actions of the editor are left alone, they are the
     // ones that handle the keys.
-    const QList<QAction *> actions = top->findChildren<QAction *>();
+    const QList<QAction *> actions = ScriptEditorInternal::windowActions(top);
     for (QAction *action : actions) {
         if (isEditorAction(action)) {
             continue;

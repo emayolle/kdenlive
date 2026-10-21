@@ -10,8 +10,10 @@
 
 using namespace ScriptEditorInternal;
 
+#include <KActionCategory>
 #include <KActionCollection>
 #include <KTextEditor/View>
+#include <KXmlGuiWindow>
 
 #include <QApplication>
 #include <QTest>
@@ -42,6 +44,15 @@ TEST_CASE("Script editor", "[Scripting]")
 
 TEST_CASE("Script editor shortcuts", "[Scripting]")
 {
+    // The actions of Kdenlive are in the action categories, they must be found
+    KXmlGuiWindow window;
+    KActionCategory category(QStringLiteral("Test category"), window.actionCollection());
+    QAction categoryAction(QStringLiteral("Category action"), &window);
+    category.addAction(QStringLiteral("category_action"), &categoryAction);
+    categoryAction.setShortcut(QKeySequence(QStringLiteral("A")));
+    const auto actions = ScriptEditorInternal::windowActions(&window);
+    REQUIRE(actions.contains(&categoryAction));
+
     ScriptEditor editor;
     editor.resize(600, 400);
     editor.show();
