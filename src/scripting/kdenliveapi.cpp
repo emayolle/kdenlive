@@ -201,7 +201,10 @@ QString KdenliveApi::addClipToBin(const QString &url, const QString &name)
     if (!name.isEmpty()) {
         auto clip = model->getClipByBinID(id);
         if (clip) {
-            clip->setName(name);
+            // The name is stored in the properties of the producer, setName()
+            // would not be saved. ProjectClip::rename() cannot be used, it
+            // needs the bin widget that does not exist without the interface.
+            clip->setProperties({{QStringLiteral("kdenlive:clipname"), name}}, false);
         }
     }
     return id;

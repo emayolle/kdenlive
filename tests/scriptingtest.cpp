@@ -6,6 +6,7 @@
 #include "catch.hpp"
 #include "test_utils.hpp"
 // test specific headers
+#include "bin/projectclip.h"
 #include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
 #include "scripting/kdenliveapi.h"
@@ -17,6 +18,7 @@
 #include "core.h"
 
 #include <QFile>
+#include <QImage>
 #include <QTemporaryDir>
 
 using namespace fakeit;
@@ -98,6 +100,37 @@ TEST_CASE("Scripting api", "[Scripting]")
         REQUIRE(!api.lastError().isEmpty());
         REQUIRE(api.insertClip(binId, -1, 0) == -1);
         REQUIRE(!api.lastError().isEmpty());
+    }
+
+    SECTION("Name a clip of the bin")
+    {
+        // A file to import in the bin
+        QTemporaryDir directory;
+        REQUIRE(directory.isValid());
+        QImage image(16, 16, QImage::Format_RGB32);
+        image.fill(Qt::red);
+        REQUIRE(image.save(directory.path() + QStringLiteral("/test.png")));
+
+        const QString id = api.addClipToBin(directory.path() + QStringLiteral("/test.png"), QStringLiteral("My clip"));
+        REQUIRE(!id.isEmpty());
+        REQUIRE(api.lastError().isEmpty());
+
+        // The name is the one that was given, not the name of the file
+        bool found = false;
+        for (const auto &clip : api.binClips()) {
+            if (clip.id == id) {
+                REQUIRE(clip.name == QStringLiteral("My clip"));
+                found = true;
+            }
+        }
+        REQUIRE(found);
+
+        // The name is written in the properties of the producer, it is kept
+        // when the project is saved
+        const auto item = binModel->getItemByBinId(id);
+        REQUIRE(item);
+        auto clip = std::static_pointer_cast<ProjectClip>(item);
+        REQUIRE(clip->getProducerProperty(QStringLiteral("kdenlive:clipname")) == QStringLiteral("My clip"));
     }
 
     SECTION("Refuse the invalid arguments")
