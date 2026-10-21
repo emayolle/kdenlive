@@ -271,7 +271,7 @@ private:
     KDDockWidgets::QtWidgets::DockWidget *m_effectListDock{nullptr};
     KDDockWidgets::QtWidgets::DockWidget *m_compositionListDock{nullptr};
 #ifdef HAVE_SCRIPT_EDITOR
-    KDDockWidgets::QtWidgets::DockWidget *m_scriptEditorDock{nullptr};
+    QDialog *m_scriptEditorDialog{nullptr};
     ScriptEditor *m_scriptEditor{nullptr};
 #endif
     TransitionListWidget *m_compositionList{nullptr};

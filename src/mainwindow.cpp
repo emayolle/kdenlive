@@ -304,12 +304,18 @@ void MainWindow::init()
     dockGuides->close();
 
 #ifdef HAVE_SCRIPT_EDITOR
-    // The script editor, a panel to write and run a python script
-    m_scriptEditor = new ScriptEditor(this);
-    m_scriptEditorDock = addDock(i18n("Script Editor"), QStringLiteral("script_editor"), m_scriptEditor, KDDockWidgets::Location_OnRight);
-    m_scriptEditorDock->close();
+    // The script editor has its own window. In a dock, the keyboard focus and
+    // the shortcuts of the main window get in the way of the editor.
+    m_scriptEditorDialog = new QDialog(this);
+    m_scriptEditorDialog->setWindowTitle(i18n("Script Editor"));
+    m_scriptEditorDialog->resize(700, 600);
+    auto *editorLayout = new QVBoxLayout(m_scriptEditorDialog);
+    // The editor belongs to the dialog, it must not be a child of the main
+    // window as well, it would be destroyed twice
+    m_scriptEditor = new ScriptEditor(m_scriptEditorDialog);
+    editorLayout->addWidget(m_scriptEditor);
     connect(m_scriptEditor, &ScriptEditor::scriptFinished, this, [this](bool success) {
-        // The details are in the console of the panel, the status bar only tells
+        // The details are in the console of the editor, the status bar only tells
         // whether the script worked
         pCore->displayMessage(success ? i18n("The script ran successfully") : i18n("The script failed"), success ? InformationMessage : ErrorMessage, 3000);
     });
@@ -3691,11 +3697,12 @@ void MainWindow::slotShowSubtitles(bool show)
 #ifdef HAVE_SCRIPT_EDITOR
 void MainWindow::slotShowScriptEditor()
 {
-    if (!m_scriptEditorDock) {
+    if (!m_scriptEditorDialog) {
         return;
     }
-    m_scriptEditorDock->open();
-    m_scriptEditorDock->setAsCurrentTab();
+    m_scriptEditorDialog->show();
+    m_scriptEditorDialog->raise();
+    m_scriptEditorDialog->activateWindow();
     m_scriptEditor->focusEditor();
 }
 #endif

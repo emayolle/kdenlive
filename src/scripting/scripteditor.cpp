@@ -81,16 +81,14 @@ QWidget *textWidgetOf(KTextEditor::View *view)
 QList<QAction *> windowActions(QWidget *window)
 {
     QList<QAction *> actions = window->actions();
-    auto *xmlWindow = qobject_cast<KXmlGuiWindow *>(window);
-    if (!xmlWindow) {
-        return actions;
-    }
-    actions.append(xmlWindow->actionCollection()->actions());
-    // The actions of Kdenlive are in the categories, they are not in the
+    // The actions of Kdenlive are in the action categories, they are not in the
     // collection of the window
-    const auto categories = xmlWindow->actionCollection()->findChildren<KActionCategory *>();
+    const auto categories = window->findChildren<KActionCategory *>();
     for (KActionCategory *category : categories) {
         actions.append(category->actions());
+    }
+    if (auto *xmlWindow = qobject_cast<KXmlGuiWindow *>(window)) {
+        actions.append(xmlWindow->actionCollection()->actions());
     }
     return actions;
 }
@@ -207,6 +205,16 @@ bool ScriptEditor::isEditorAction(QAction *action) const
     return false;
 }
 
+bool ScriptEditor::hasSavedShortcut(QAction *action) const
+{
+    for (const auto &saved : m_savedShortcuts) {
+        if (saved.first.data() == action) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void ScriptEditor::updateWindowShortcuts(bool inEditor)
 {
     QWidget *top = window();
@@ -222,16 +230,23 @@ void ScriptEditor::updateWindowShortcuts(bool inEditor)
             continue;
         }
         if (inEditor) {
-            if (m_savedShortcuts.contains(action)) {
+            if (hasSavedShortcut(action)) {
                 continue;
             }
             if (!ScriptEditorInternal::isConflictingShortcut(action->shortcut())) {
                 continue;
             }
-            m_savedShortcuts.insert(action, action->shortcut());
+            m_savedShortcuts.append({QPointer<QAction>(action), action->shortcut()});
             action->setShortcut(QKeySequence());
-        } else if (m_savedShortcuts.contains(action)) {
-            action->setShortcut(m_savedShortcuts.take(action));
+        } else {
+            for (int i = 0; i < m_savedShortcuts.size(); i++) {
+                if (m_savedShortcuts.at(i).first.data() != action) {
+                    continue;
+                }
+                action->setShortcut(m_savedShortcuts.at(i).second);
+                m_savedShortcuts.removeAt(i);
+                break;
+            }
         }
     }
     // The same for the shortcuts that are not actions
@@ -260,8 +275,14 @@ void ScriptEditor::updateWindowShortcuts(bool inEditor)
 
 ScriptEditor::~ScriptEditor()
 {
-    // The shortcuts of the window must be given back
-    updateWindowShortcuts(false);
+    // The shortcuts of the window must be given back. The actions can be gone
+    // already, the pointer tells it.
+    for (const auto &saved : std::as_const(m_savedShortcuts)) {
+        if (saved.first) {
+            saved.first->setShortcut(saved.second);
+        }
+    }
+    m_savedShortcuts.clear();
     qApp->removeEventFilter(this);
 }
 

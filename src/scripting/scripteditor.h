@@ -7,6 +7,7 @@
 #pragma once
 
 #include <QMap>
+#include <QPointer>
 #include <QWidget>
 
 class QAction;
@@ -97,6 +98,8 @@ public:
      * @param inEditor True when the editor has the focus.
      */
     void updateWindowShortcuts(bool inEditor);
+    /** @brief Tells whether the shortcut of an action was taken away. */
+    bool hasSavedShortcut(QAction *action) const;
     /** @brief Tells whether an action belongs to the editor. */
     bool isEditorAction(QAction *action) const;
 
@@ -128,6 +131,6 @@ private:
     /** @brief True when the editor has the focus, for the log. */
     bool m_lastFocusInEditor{false};
     /** @brief The shortcuts of the window, they are taken away from the editor. */
-    QMap<QAction *, QKeySequence> m_savedShortcuts;
+    QList<QPair<QPointer<QAction>, QKeySequence>> m_savedShortcuts;
     QList<QShortcut *> m_disabledShortcuts;
 };
