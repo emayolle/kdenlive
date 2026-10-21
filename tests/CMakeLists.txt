@@ -79,6 +79,8 @@ endforeach()
 # The test of the script editor sends keys to the editor
 if(kdenlive_SCRIPT_EDITOR_FOUND)
   target_link_libraries(scripteditortest Qt${QT_MAJOR_VERSION}::Test)
+  # The test needs a window, it does not need a display
+  set_tests_properties(scripteditortest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
 
 target_sources(timelinepreviewtest PRIVATE timelinepreviewmonitor.cpp)
