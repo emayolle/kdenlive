@@ -18,6 +18,7 @@ class Application;
 class Document;
 class View;
 } // namespace KTextEditor
+class KTextEditor::View;
 class QPlainTextEdit;
 class QPushButton;
 
@@ -25,7 +26,8 @@ namespace ScriptEditorInternal {
 /** @brief What to do with a key that is pressed in the editor. */
 enum class ShortcutHandling {
     Pass,   /**< The window of Kdenlive handles the shortcut. */
-    Accept, /**< The key is handled by the editor. */
+    Accept, /**< The key is typed in the editor. */
+    Ignore, /**< The editor has an action for this key, it must be triggered. */
 };
 
 /**
@@ -43,6 +45,15 @@ ShortcutHandling shortcutHandling(const QKeyEvent *keyEvent);
  * and the ones that the editor uses for the copy and the paste.
  */
 bool isConflictingShortcut(const QKeySequence &shortcut);
+
+/**
+ * @brief The text widget of the editor.
+ *
+ * The text widget of Kate is not a QTextEdit, it is a widget of its own that
+ * holds one. It is the one that handles the keys, the view only inserts the
+ * text.
+ */
+QWidget *textWidgetOf(KTextEditor::View *view);
 } // namespace ScriptEditorInternal
 
 /**

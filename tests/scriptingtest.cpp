@@ -440,25 +440,27 @@ TEST_CASE("Scripting api", "[Scripting]")
         QKeyEvent left(QEvent::ShortcutOverride, Qt::Key_Left, Qt::NoModifier, QString());
         REQUIRE(shortcutHandling(&left) == ShortcutHandling::Accept);
 
-        // The editing shortcuts are handled by the editor
+        // The editing shortcuts are the ones of the editor
         QKeyEvent selectAll(QEvent::ShortcutOverride, Qt::Key_A, Qt::ControlModifier, QStringLiteral("a"));
-        REQUIRE(shortcutHandling(&selectAll) == ShortcutHandling::Accept);
+        REQUIRE(shortcutHandling(&selectAll) == ShortcutHandling::Ignore);
         QKeyEvent paste(QEvent::ShortcutOverride, Qt::Key_V, Qt::ControlModifier, QStringLiteral("v"));
-        REQUIRE(shortcutHandling(&paste) == ShortcutHandling::Accept);
+        REQUIRE(shortcutHandling(&paste) == ShortcutHandling::Ignore);
         QKeyEvent cut(QEvent::ShortcutOverride, Qt::Key_X, Qt::ControlModifier, QStringLiteral("x"));
-        REQUIRE(shortcutHandling(&cut) == ShortcutHandling::Accept);
+        REQUIRE(shortcutHandling(&cut) == ShortcutHandling::Ignore);
 
         // The other shortcuts of the window are left alone
         QKeyEvent other(QEvent::ShortcutOverride, Qt::Key_S, Qt::ControlModifier, QStringLiteral("s"));
         REQUIRE(shortcutHandling(&other) == ShortcutHandling::Pass);
 
-        // The shortcuts of the window that are in conflict with the editor
-        REQUIRE(isConflictingShortcut(QKeySequence::SelectAll));
-        REQUIRE(isConflictingShortcut(QKeySequence::Copy));
-        REQUIRE(isConflictingShortcut(QKeySequence::Paste));
-        // The keys that are typed in the editor
+        // The shortcuts of the window that would swallow the keys of the editor
+        // are the ones without modifier
         REQUIRE(isConflictingShortcut(QKeySequence(QStringLiteral("A"))));
         REQUIRE(isConflictingShortcut(QKeySequence(QStringLiteral("S"))));
+        // The editor has the priority over the window for the shortcuts with a
+        // modifier, they are left alone
+        REQUIRE(!isConflictingShortcut(QKeySequence::SelectAll));
+        REQUIRE(!isConflictingShortcut(QKeySequence::Copy));
+        REQUIRE(!isConflictingShortcut(QKeySequence::Paste));
         // The other shortcuts of the window are left alone
         REQUIRE(!isConflictingShortcut(QKeySequence(QStringLiteral("Ctrl+S"))));
         REQUIRE(!isConflictingShortcut(QKeySequence()));
