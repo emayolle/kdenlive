@@ -27,6 +27,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 #include "kdenlive_debug.h"
 #include "kdenlivesettings.h"
 #include "library/librarywidget.h"
+#include "localeHandling.h"
 #include "mainwindow.h"
 #include "mltconnection.h"
 #include "mltcontroller/clipcontroller.h"
@@ -190,9 +191,12 @@ bool Core::build(LinuxPackageType packageType, bool testMode, bool debugMode, bo
             }
         } else {
             // Create lock file
-            lockFile.open(QFile::WriteOnly);
-            lockFile.write(QByteArray());
-            lockFile.close();
+            if (!lockFile.open(QFile::WriteOnly)) {
+                qCWarning(KDENLIVE_LOG) << "Failed to create lock file:" << lockFile.fileName() << lockFile.errorString();
+            } else {
+                lockFile.write(QByteArray());
+                lockFile.close();
+            }
         }
         if (currentVersion.length() == 3 && (firstRun || KdenliveSettings::lastSeenVersionMajor() == 0)) {
             // Store current Kdenlive version
@@ -374,6 +378,7 @@ void Core::buildSplash(bool firstRun, bool showWelcome, bool showCrashRecovery, 
 void Core::initHeadless(const QUrl &url)
 {
     MltConnection::construct(QString());
+    LocaleHandling::resetAllLocale();
     m_projectManager = new ProjectManager(this);
     QMetaObject::invokeMethod(pCore->projectManager(), "slotLoadHeadless", Qt::DirectConnection, Q_ARG(QUrl, url));
     connect(this, &Core::displayBinMessage, this,
@@ -596,8 +601,6 @@ void Core::buildDocks()
     connect(m_capture.get(), &MediaCapture::recordStateChanged, m_mixerWidget, &MixerManager::recordStateChanged);
     connect(m_capture.get(), &MediaCapture::monitorFailed, m_mixerWidget, &MixerManager::monitorFailed);
     connect(m_mixerWidget, &MixerManager::updateRecVolume, m_capture.get(), &MediaCapture::setAudioVolume);
-    connect(m_monitorManager, &MonitorManager::cleanMixer, m_mixerWidget, &MixerManager::clearMixers);
-    m_mixerWidget->checkAudioLevelVersion();
     connect(m_mixerWidget, &MixerManager::showEffectStack, m_projectManager, &ProjectManager::showTrackEffectStack);
 
     // Media Browser
@@ -2451,4 +2454,12 @@ const QStringList Core::getLumasForProfile()
         return MainWindow::m_lumaFiles.value(QStringLiteral("9_16"));
     }
     return MainWindow::m_lumaFiles.value(QStringLiteral("16_9"));
+}
+
+std::list<int> Core::getAudioTrackIds()
+{
+    if (m_mainWindow && m_mainWindow->getCurrentTimeline()) {
+        return m_mainWindow->getCurrentTimeline()->model()->getAudioTrackIndexes();
+    }
+    return {};
 }

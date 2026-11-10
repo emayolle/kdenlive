@@ -450,8 +450,7 @@ void longUndoChains(int sample)
         const auto checkClips = [&](int delta) {
             require(timeline->getClipsCount() == count, "Wrong clip count");
             for (int i = 0; i < count; ++i) {
-                require(timeline->getClipTrackId(clips[i]) == trackOf(i) && timeline->getClipPosition(clips[i]) == startOf(i) + delta,
-                        "Wrong clip position");
+                require(timeline->getClipTrackId(clips[i]) == trackOf(i) && timeline->getClipPosition(clips[i]) == startOf(i) + delta, "Wrong clip position");
             }
             require(timeline->checkConsistency(), "Inconsistent timeline");
         };

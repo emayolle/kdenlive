@@ -11,6 +11,7 @@
 #include "mainwindow.h"
 #include "mixerseparator.h"
 #include "mixerwidget.hpp"
+#include "monitor.h"
 #include "timeline2/model/timelineitemmodel.hpp"
 
 #include "mlt++/MltTractor.h"
@@ -32,7 +33,6 @@ MixerManager::MixerManager(QWidget *parent)
     , m_expandedWidth(-1)
     , m_recommendedWidth(300)
     , m_monitorTrack(-1)
-    , m_filterIsV2(false)
 {
     m_masterBox = new QHBoxLayout;
     setContentsMargins(kNoMargin);
@@ -62,11 +62,6 @@ MixerManager::MixerManager(QWidget *parent)
     m_messageWidget->setWordWrap(true);
     m_messageWidget->setVisible(false);
     vBox->addWidget(m_messageWidget);
-}
-
-void MixerManager::checkAudioLevelVersion()
-{
-    m_filterIsV2 = EffectsRepository::get()->exists(QStringLiteral("audiolevel")) && EffectsRepository::get()->getVersion(QStringLiteral("audiolevel")) > 100;
 }
 
 bool MixerManager::isMasterMute() const
@@ -122,6 +117,7 @@ void MixerManager::registerTrack(int tid, Mlt::Tractor *service, const QString &
     }
     std::shared_ptr<MixerWidget> mixer(new MixerWidget(tid, service, trackTag, trackName, this));
     mixer->setContentsMargins(kMarginAroundMixer);
+    pCore->getMonitor(Kdenlive::ProjectMonitor)->registerAudioTrack(tid, true);
 
     // Use alternating background colors for mixers
     int mixerCount = m_mixers.size();
@@ -133,8 +129,7 @@ void MixerManager::registerTrack(int tid, Mlt::Tractor *service, const QString &
     if (m_visibleMixerManager) {
         mixer->connectMixer(!KdenliveSettings::mixerCollapse());
     }
-    connect(pCore.get(), &Core::updateMixerLevels, mixer.get(), &MixerWidget::updateAudioLevel);
-    connect(this, &MixerManager::clearMixers, mixer.get(), &MixerWidget::clear);
+
     connect(mixer.get(), &MixerWidget::toggleSolo, this, [&](int trid, bool solo) {
         bool additive = qApp->keyboardModifiers().testFlag(Qt::ShiftModifier);
         bool preserveOtherSolos = !additive && m_soloTracks.size() > 1 && m_soloTracks.contains(trid);
@@ -270,6 +265,7 @@ void MixerManager::deregisterTrack(int tid)
     QWidget *mixerWidget = m_mixers[tid].get();
     m_channelsLayout->removeWidget(mixerWidget);
     mixerWidget->deleteLater();
+    pCore->getMonitor(Kdenlive::ProjectMonitor)->registerAudioTrack(tid, false);
 
     // Remove the separator if it exists
     if (m_separators.count(tid) > 0) {
@@ -350,7 +346,6 @@ void MixerManager::setModel(std::shared_ptr<TimelineItemModel> model)
     if (m_visibleMixerManager) {
         m_masterMixer->connectMixer(true);
     }
-    connect(this, &MixerManager::clearMixers, m_masterMixer.get(), &MixerWidget::clear);
     m_masterBox->addWidget(m_masterMixer.get());
     if (KdenliveSettings::mixerCollapse()) {
         collapseMixers();
@@ -428,11 +423,6 @@ void MixerManager::pauseMonitoring(bool pause)
 int MixerManager::recordTrack() const
 {
     return m_monitorTrack;
-}
-
-bool MixerManager::audioLevelV2() const
-{
-    return m_filterIsV2;
 }
 
 void MixerManager::displayMessage(const QString &message, KMessageWidget::MessageType type)

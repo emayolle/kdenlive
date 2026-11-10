@@ -1179,9 +1179,9 @@ int EffectStackModel::getFadeMethod(bool fromStart)
             if (*(m_fadeIns.begin()) == std::static_pointer_cast<TreeItem>(rootItem->child(i))->getId()) {
                 std::shared_ptr<EffectItemModel> effect = std::static_pointer_cast<EffectItemModel>(rootItem->child(i));
                 QString fadeData = effect->filter().get("alpha");
-                if (!fadeData.contains(QLatin1Char('='))) {
+                if (fadeData.indexOf(QLatin1Char('=')) < 1) {
                     fadeData = effect->filter().get("level");
-                    if (!fadeData.contains(QLatin1Char('='))) {
+                    if (fadeData.indexOf(QLatin1Char('=')) < 1) {
                         return 0;
                     }
                 }
@@ -1201,9 +1201,9 @@ int EffectStackModel::getFadeMethod(bool fromStart)
             if (*(m_fadeOuts.begin()) == std::static_pointer_cast<TreeItem>(rootItem->child(i))->getId()) {
                 std::shared_ptr<EffectItemModel> effect = std::static_pointer_cast<EffectItemModel>(rootItem->child(i));
                 QString fadeData = effect->filter().get("alpha");
-                if (!fadeData.contains(QLatin1Char('='))) {
+                if (fadeData.indexOf(QLatin1Char('=')) < 1) {
                     fadeData = effect->filter().get("level");
-                    if (!fadeData.contains(QLatin1Char('='))) {
+                    if (fadeData.indexOf(QLatin1Char('=')) < 1) {
                         return 0;
                     }
                 }
@@ -1346,20 +1346,29 @@ void EffectStackModel::registerItem(const std::shared_ptr<TreeItem> &item)
             effectItem->plant(m_masterService);
             // Check if we have an internal effect that needs to stay on top
             if (m_ownerId.type == KdenliveObjectType::Master || m_ownerId.type == KdenliveObjectType::TimelineTrack) {
-                // check for subtitle effect
+                // check for subtitle and other internal effects like volume, pan, audiolevel
                 auto ms = m_masterService.lock();
                 QVector<int> ixToMove;
+                int audioLevelIx = -1;
                 int ct = ms->filter_count();
                 for (int i = 0; i < ms->filter_count(); i++) {
                     std::shared_ptr<Mlt::Filter> ft(ms->filter(i));
                     if (ft->get_int("internal_added") > 0) {
+                        // Audio levels should always be last
+                        if (ft->get("mlt_service") && strcmp(ft->get("mlt_service"), "audiolevel") == 0) {
+                            audioLevelIx = i;
+                        }
                         ixToMove << i;
                     }
                 }
                 std::sort(ixToMove.rbegin(), ixToMove.rend());
+                int offset = 1;
                 for (auto &ix : ixToMove) {
                     if (ix < ct - 1) {
-                        ms->move_filter(ix, ct - 1);
+                        ms->move_filter(ix, ct - offset);
+                    }
+                    if (ix == audioLevelIx) {
+                        offset = 2;
                     }
                 }
             }
@@ -1647,6 +1656,7 @@ void EffectStackModel::setActiveEffect(int ix)
             Q_EMIT currentChanged(getIndexFromItem(effect), true);
         }
     }
+    Q_EMIT customDataChanged(QModelIndex(), QModelIndex(), {TimelineModel::KeyframesListRole});
 }
 
 int EffectStackModel::getActiveEffect() const
@@ -1813,6 +1823,21 @@ KeyframeModel *EffectStackModel::getEffectKeyframeModel()
         if (listModel) {
             return listModel->getKeyModel();
         }
+    }
+    return nullptr;
+}
+
+KeyframeModelList *EffectStackModel::getEffectKeyframeModelList()
+{
+    if (rootItem->childCount() == 0) return nullptr;
+    int ix = getActiveEffect();
+    if (ix < 0 || ix >= rootItem->childCount()) {
+        return nullptr;
+    }
+    std::shared_ptr<EffectItemModel> sourceEffect = std::static_pointer_cast<EffectItemModel>(rootItem->child(ix));
+    if (sourceEffect->isAssetEnabled()) {
+        std::shared_ptr<KeyframeModelList> listModel = sourceEffect->getKeyframeModel();
+        return listModel.get();
     }
     return nullptr;
 }

@@ -15,6 +15,7 @@
 #include "gradientwidget.h"
 #include "richtextgradient.h"
 #include "richtextoutline.h"
+#include "richtextshadow.h"
 #include "richtextspacing.h"
 #include <QDebug>
 #include <QFontInfo>
@@ -417,6 +418,9 @@ QDomDocument TitleDocument::xmlItem(const QGraphicsItem *item, int width, int he
             content.appendChild(outlines);
         }
 
+        const QDomElement shadows = TitlerShadowV1::save(doc, t->document());
+        if (!shadows.isNull()) content.appendChild(shadows);
+
         // Use the first run for legacy fallback, without changing the live item.
         QTextCursor fallback(t->document());
         fallback.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
@@ -747,7 +751,6 @@ QGraphicsItem *TitleDocument::loadItemFromXml(const QDomNode &itemNode, const QS
                     qWarning() << "Ignoring invalid title rich-text gradient metadata";
                 }
                 txt->document()->setDocumentMargin(0);
-                TitlerGradientV1::applyBrushes(txt->document(), int(txt->baseBoundingRect().width()), int(txt->baseBoundingRect().height()));
             }
 
             txt->setTextInteractionFlags(Qt::NoTextInteraction);
@@ -799,6 +802,12 @@ QGraphicsItem *TitleDocument::loadItemFromXml(const QDomNode &itemNode, const QS
                 txt->setAlignment(Qt::Alignment(txtProperties.namedItem(QStringLiteral("alignment")).nodeValue().toInt()));
             }
 
+            // Restore presentation brushes after alignment has finalized layout.
+            // Legacy object-level gradients retain their existing precedence.
+            if (hasRichText && txtProperties.namedItem(QStringLiteral("gradient")).isNull()) {
+                TitlerGradientV1::applyBrushes(txt->document(), int(txt->baseBoundingRect().width()), int(txt->baseBoundingRect().height()));
+            }
+
             if (!txtProperties.namedItem(QStringLiteral("kdenlive-axis-x-inverted")).isNull()) {
                 txt->setData(OriginXLeft, txtProperties.namedItem(QStringLiteral("kdenlive-axis-x-inverted")).nodeValue().toInt());
             }
@@ -809,6 +818,12 @@ QGraphicsItem *TitleDocument::loadItemFromXml(const QDomNode &itemNode, const QS
             if (!txtProperties.namedItem(QStringLiteral("shadow")).isNull()) {
                 QString info = txtProperties.namedItem(QStringLiteral("shadow")).nodeValue();
                 txt->loadShadow(info.split(QLatin1Char(';')));
+            }
+            if (hasRichText) {
+                if (!TitlerShadowV1::restore(contentElement, txt->document())) {
+                    qWarning() << "Ignoring invalid title rich-text shadow metadata";
+                }
+                txt->doUpdateGeometry();
             }
 
             // Effects

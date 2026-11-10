@@ -256,6 +256,11 @@ bool KeyframeModelList::addKeyframe(int frame, double val)
     }
 }
 
+bool KeyframeModelList::removeKeyframe(int frame)
+{
+    return removeKeyframe(GenTime(frame, pCore->getCurrentFps()));
+}
+
 bool KeyframeModelList::removeKeyframe(GenTime pos)
 {
     QWriteLocker locker(&m_lock);
@@ -380,12 +385,103 @@ bool KeyframeModelList::removeNextKeyframes(GenTime pos)
     }
 }
 
+bool KeyframeModelList::moveKeyframeByIndex(int index, int newPos, Fun &undo, Fun &redo, bool logUndo, bool updateView)
+{
+    QWriteLocker locker(&m_lock);
+    Q_ASSERT(m_parameters.size() > 0);
+    auto op = [index, newPos, logUndo, updateView](std::shared_ptr<KeyframeModel> param, bool allowedToFail, Fun &undo, Fun &redo) {
+        return param->moveKeyframeByIndex(index, newPos, undo, redo, logUndo, updateView);
+    };
+    const QString opText = logUndo ? i18nc("@action", "Move keyframe") : QString();
+    bool res = applyOperation(op, undo, redo);
+    if (!logUndo) {
+        return res;
+    }
+    if (res) {
+        PUSH_UNDO(undo, redo, opText);
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool KeyframeModelList::moveKeyframe(int oldPos, int newPos, QVariant newVal, bool logUndo)
+{
+    QWriteLocker locker(&m_lock);
+    Q_ASSERT(m_parameters.size() > 0);
+    auto op = [oldPos, newPos, newVal, logUndo, this](std::shared_ptr<KeyframeModel> param, bool allowedToFail, Fun &undo, Fun &redo) {
+        if (param == modelInTimeline()) {
+            return param->moveKeyframe(GenTime(oldPos, pCore->getCurrentFps()), GenTime(newPos, pCore->getCurrentFps()), newVal, logUndo, undo, redo, true,
+                                       allowedToFail);
+        } else {
+            return param->moveKeyframe(GenTime(oldPos, pCore->getCurrentFps()), GenTime(newPos, pCore->getCurrentFps()), QVariant(), logUndo, undo, redo, true,
+                                       allowedToFail);
+        }
+    };
+    const QString opText = logUndo ? i18nc("@action", "Move keyframe") : QString();
+    Fun undo = []() { return true; };
+    Fun redo = []() { return true; };
+    bool res = applyOperation(op, undo, redo);
+    if (!logUndo) {
+        return res;
+    }
+    if (res) {
+        PUSH_UNDO(undo, redo, opText);
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool KeyframeModelList::offsetKeyframes(int oldPos, int pos, bool logUndo)
+{
+    if (oldPos == pos || m_parameters.empty()) return true;
+    GenTime oldFrame(oldPos, pCore->getCurrentFps());
+    GenTime diff(pos - oldPos, pCore->getCurrentFps());
+    QWriteLocker locker(&m_lock);
+    bool nextOk = false;
+    auto kf = m_parameters.begin()->second->getNextKeyframe(GenTime(-1), &nextOk);
+    QList<GenTime> times;
+    GenTime current;
+    while (nextOk) {
+        current = kf.first;
+        kf = m_parameters.begin()->second->getNextKeyframe(current, &nextOk);
+        if (current < oldFrame) {
+            // Only touch keyframes after oldPos
+            continue;
+        }
+        times << current;
+    }
+    Fun undo = []() { return true; };
+    Fun redo = []() { return true; };
+    if (diff > GenTime()) {
+        // Move to the right, start with last one to avoid collisions
+        std::sort(times.rbegin(), times.rend());
+    }
+    bool res = true;
+    for (const auto &t : std::as_const(times)) {
+        auto op = [t, diff, logUndo](std::shared_ptr<KeyframeModel> param, bool allowedToFail, Fun &undo, Fun &redo) {
+            return param->moveKeyframe(t, t + diff, QVariant(), logUndo, undo, redo, true, allowedToFail);
+        };
+        res = res && applyOperation(op, undo, redo);
+    }
+    if (!logUndo) {
+        return res;
+    }
+    if (res) {
+        PUSH_UNDO(undo, redo, i18nc("@action", "Move keyframes"));
+        return true;
+    } else {
+        return false;
+    }
+}
+
 bool KeyframeModelList::moveKeyframe(GenTime oldPos, GenTime pos, bool logUndo, bool updateView)
 {
     QWriteLocker locker(&m_lock);
     Q_ASSERT(m_parameters.size() > 0);
-    auto op = [oldPos, pos, updateView](std::shared_ptr<KeyframeModel> param, bool allowedToFail, Fun &undo, Fun &redo) {
-        return param->moveKeyframe(oldPos, pos, QVariant(), undo, redo, updateView, allowedToFail);
+    auto op = [oldPos, pos, updateView, logUndo](std::shared_ptr<KeyframeModel> param, bool allowedToFail, Fun &undo, Fun &redo) {
+        return param->moveKeyframe(oldPos, pos, QVariant(), logUndo, undo, redo, updateView, allowedToFail);
     };
     const QString opText = logUndo ? i18nc("@action", "Move keyframe") : QString();
     Fun undo = []() { return true; };
@@ -405,8 +501,8 @@ bool KeyframeModelList::moveKeyframe(GenTime oldPos, GenTime pos, bool logUndo, 
                 // Keyframe is outside object, don't process
                 continue;
             }
-            auto op2 = [oldPosWithOffset, posWithOffset, updateView](std::shared_ptr<KeyframeModel> param, bool allowedToFail, Fun &undo, Fun &redo) {
-                return param->moveKeyframe(oldPosWithOffset, posWithOffset, QVariant(), undo, redo, updateView, allowedToFail);
+            auto op2 = [oldPosWithOffset, posWithOffset, updateView, logUndo](std::shared_ptr<KeyframeModel> param, bool allowedToFail, Fun &undo, Fun &redo) {
+                return param->moveKeyframe(oldPosWithOffset, posWithOffset, QVariant(), logUndo, undo, redo, updateView, allowedToFail);
             };
             res = res && km->applyOperation(op2, undo, redo);
         }
@@ -426,7 +522,7 @@ bool KeyframeModelList::moveKeyframeWithUndo(GenTime oldPos, GenTime pos, Fun &u
 {
     bool result = true;
     for (const auto &param : m_parameters) {
-        result = result && param.second->moveKeyframe(oldPos, pos, QVariant(), undo, redo);
+        result = result && param.second->moveKeyframe(oldPos, pos, QVariant(), true, undo, redo);
     }
     if (result && KdenliveSettings::applyEffectParamsToGroup()) {
         ObjectId id = getOwnerId();
@@ -443,7 +539,7 @@ bool KeyframeModelList::moveKeyframeWithUndo(GenTime oldPos, GenTime pos, Fun &u
                 continue;
             }
             for (const auto &param : km->getAllParameters()) {
-                result = result && param.second->moveKeyframe(oldPosWithOffset, posWithOffset, QVariant(), undo, redo);
+                result = result && param.second->moveKeyframe(oldPosWithOffset, posWithOffset, QVariant(), true, undo, redo);
             }
         }
     }
@@ -463,7 +559,7 @@ bool KeyframeModelList::updateKeyframe(GenTime oldPos, GenTime pos, const QVaria
             }
         }
     }
-    auto op = [this, oldPos, pos, normalizedVal, isRectParam](std::shared_ptr<KeyframeModel> param, bool allowedToFail, Fun &undo, Fun &redo) {
+    auto op = [this, oldPos, pos, normalizedVal, isRectParam, logUndo](std::shared_ptr<KeyframeModel> param, bool allowedToFail, Fun &undo, Fun &redo) {
         QVariant value;
         std::shared_ptr<KeyframeModel> timelineModel = modelInTimeline();
         if (timelineModel) {
@@ -481,7 +577,7 @@ bool KeyframeModelList::updateKeyframe(GenTime oldPos, GenTime pos, const QVaria
         } else if (isFirstParameter(param)) {
             value = normalizedVal;
         }
-        return param->moveKeyframe(oldPos, pos, value, undo, redo, true, allowedToFail);
+        return param->moveKeyframe(oldPos, pos, value, logUndo, undo, redo, true, allowedToFail);
     };
     const QString opText = logUndo ? i18nc("@action", "Move keyframe") : QString();
     Fun undo = []() { return true; };
@@ -501,8 +597,8 @@ bool KeyframeModelList::updateKeyframe(GenTime oldPos, GenTime pos, const QVaria
                 // Keyframe is outside object, don't process
                 continue;
             }
-            auto op2 = [km, oldPosWithOffset, posWithOffset, normalizedVal, isRectParam](std::shared_ptr<KeyframeModel> param, bool allowedToFail, Fun &undo,
-                                                                                         Fun &redo) {
+            auto op2 = [km, oldPosWithOffset, posWithOffset, normalizedVal, isRectParam, logUndo](std::shared_ptr<KeyframeModel> param, bool allowedToFail,
+                                                                                                  Fun &undo, Fun &redo) {
                 QVariant value;
                 std::shared_ptr<KeyframeModel> timelineModel = km->modelInTimeline();
                 if (timelineModel) {
@@ -520,7 +616,7 @@ bool KeyframeModelList::updateKeyframe(GenTime oldPos, GenTime pos, const QVaria
                 } else if (km->isFirstParameter(param)) {
                     value = normalizedVal;
                 }
-                return param->moveKeyframe(oldPosWithOffset, posWithOffset, value, undo, redo, true, allowedToFail);
+                return param->moveKeyframe(oldPosWithOffset, posWithOffset, value, logUndo, undo, redo, true, allowedToFail);
             };
             res = res && km->applyOperation(op2, undo, redo);
         }
@@ -655,6 +751,13 @@ bool KeyframeModelList::hasKeyframe(int frame) const
     return m_parameters.begin()->second->hasKeyframe(frame);
 }
 
+KeyframeType::KeyframeEnum KeyframeModelList::getKeyframeTypeForPos(const GenTime pos)
+{
+    READ_LOCK();
+    Q_ASSERT(m_parameters.size() > 0);
+    return m_parameters.begin()->second->getKeyframeTypeForPos(pos);
+}
+
 bool KeyframeModelList::hasKeyframes(const QPersistentModelIndex index) const
 {
     READ_LOCK();
@@ -775,7 +878,7 @@ void KeyframeModelList::moveKeyframes(int oldIn, int in, Fun &undo, Fun &redo)
     }
     for (const auto &param : m_parameters) {
         for (auto frame : std::as_const(positions)) {
-            param.second->moveKeyframe(frame, frame + offset, QVariant(), undo, redo);
+            param.second->moveKeyframe(frame, frame + offset, QVariant(), true, undo, redo);
         }
     }
 }
@@ -795,16 +898,16 @@ void KeyframeModelList::resizeKeyframes(int oldIn, int oldOut, int in, int out, 
             for (const auto &param : m_parameters) {
                 if (offset > 0) {
                     QVariant value = param.second->getInterpolatedValue(new_in);
-                    param.second->updateKeyframe(old_in, value, undo, redo);
+                    param.second->updateKeyframe(old_in, value, true, undo, redo);
                 }
                 for (auto frame : std::as_const(positions)) {
                     if (new_in > GenTime()) {
                         if (frame > new_in) {
-                            param.second->moveKeyframe(frame, frame - new_in, QVariant(), undo, redo);
+                            param.second->moveKeyframe(frame, frame - new_in, QVariant(), true, undo, redo);
                             continue;
                         }
                     } else if (frame > GenTime()) {
-                        param.second->moveKeyframe(frame, frame - new_in, QVariant(), undo, redo);
+                        param.second->moveKeyframe(frame, frame - new_in, QVariant(), true, undo, redo);
                         continue;
                     }
                     if (frame != GenTime()) {
@@ -867,7 +970,7 @@ void KeyframeModelList::resizeKeyframes(int oldIn, int oldOut, int in, int out, 
                 if (kf.first == current_in) {
                     // We have a 2 keyframes situation, move last one to new out
                     for (const auto &param : m_parameters) {
-                        param.second->moveKeyframe(old_out, new_out, QVariant(), undo, redo);
+                        param.second->moveKeyframe(old_out, new_out, QVariant(), true, undo, redo);
                     }
                     return;
                 }
@@ -956,4 +1059,134 @@ std::vector<QPersistentModelIndex> KeyframeModelList::getIndexes()
         keys.push_back(kv.first);
     }
     return keys;
+}
+
+void KeyframeModelList::setScaledInfo(int sourcePos)
+{
+    if (m_parameters.empty()) {
+        return;
+    }
+    m_scaledKFInfo.clear();
+    // m_scaledRange.second = sourcePos;
+    m_scaledRange = {-1, -1};
+    m_scaledLimits = {0, 0};
+    if (auto ptr = m_model.lock()) {
+        auto owner = ptr->getOwnerId();
+        m_scaledLimits.second = pCore->getItemDuration(owner);
+    }
+    QVector<int> selection = selectedKeyframes();
+    std::sort(selection.begin(), selection.end());
+    auto km = m_parameters.begin()->second;
+    bool ok;
+    auto prevKf = km->getPrevKeyframe(km->getPosAtIndex(selection.first()), &ok);
+    if (ok) {
+        int previousFrame = prevKf.first.frames(pCore->getCurrentFps()) + 1;
+        if (previousFrame > m_scaledLimits.first) {
+            m_scaledLimits.first = previousFrame;
+        }
+    }
+    auto nextKf = km->getNextKeyframe(km->getPosAtIndex(selection.last()), &ok);
+    if (ok) {
+        int nextFrame = nextKf.first.frames(pCore->getCurrentFps()) - 1;
+        if (nextFrame < m_scaledLimits.second) {
+            m_scaledLimits.second = nextFrame;
+        }
+    }
+
+    // A map of initial {index, frame position}
+    QList<std::pair<int, int>> kfMap;
+    for (auto &k : selection) {
+        int frame = km->getPosAtIndex(k).frames(pCore->getCurrentFps());
+        if (frame < m_scaledRange.first || m_scaledRange.first < 0) {
+            m_scaledRange.first = frame;
+        }
+        m_scaledRange.second = qMax(frame, m_scaledRange.second);
+        std::pair<int, int> kfValue(k, frame);
+        kfMap << kfValue;
+    }
+    m_scaledKFInfo.insert(QModelIndex(), kfMap);
+    m_resizeFromStart = m_scaledRange.first == sourcePos;
+    m_lastResizePercentage = 1.;
+}
+
+void KeyframeModelList::moveScaledKeyframe(int updatedPos, bool logUndo, bool updateView)
+{
+    Fun undo = []() { return true; };
+    Fun redo = []() { return true; };
+    bool success = true;
+    double percentage;
+    int kfrCount = 1;
+    qDebug() << "1111111111111111111\n\n::: SCALED MOVING TO: " << updatedPos << ", LOGUNDO: " << logUndo << "\n\n1111111111111111111111";
+    for (auto i = m_scaledKFInfo.cbegin(), end = m_scaledKFInfo.cend(); i != end; ++i) {
+        int cnt = i.value().size();
+        kfrCount = qMax(cnt, kfrCount);
+    }
+    if (m_resizeFromStart) {
+        updatedPos = qMin(m_scaledLimits.second - kfrCount, updatedPos);
+        percentage = double(m_scaledRange.second - updatedPos) / (m_scaledRange.second - m_scaledRange.first);
+    } else {
+        updatedPos = qMax(m_scaledLimits.first + kfrCount, updatedPos);
+        percentage = double(updatedPos - m_scaledRange.first) / (m_scaledRange.second - m_scaledRange.first);
+    }
+    if (percentage < 0.01 || percentage == m_lastResizePercentage) {
+        return;
+    }
+    GenTime firstKeyframe;
+    // Check first / last keyframes for scaling
+    for (auto i = m_scaledKFInfo.cbegin(), end = m_scaledKFInfo.cend(); i != end; ++i) {
+        QList<std::pair<int, int>> indexes = i.value();
+        if (!m_resizeFromStart) {
+            if (percentage > m_lastResizePercentage) {
+                // When expanding, process outer keyframes first to avoid collisions
+                std::sort(indexes.begin(), indexes.end(), [](const std::pair<int, int> &a, const std::pair<int, int> &b) { return a.first > b.first; });
+                indexes.removeLast();
+            } else {
+                indexes.removeFirst();
+            }
+        } else {
+            if (percentage < m_lastResizePercentage) {
+                // When compressing form  start, process outer keyframes first to avoid collisions
+                std::sort(indexes.begin(), indexes.end(), [](const std::pair<int, int> &a, const std::pair<int, int> &b) { return a.first > b.first; });
+                indexes.removeFirst();
+            } else {
+                indexes.removeLast();
+            }
+        }
+        for (auto &j : std::as_const(indexes)) {
+            int updatedFrame = m_resizeFromStart ? m_scaledRange.second - (m_scaledRange.second - j.second) * percentage
+                                                 : m_scaledRange.first + (j.second - m_scaledRange.first) * percentage;
+            // qBound returns random numbers
+            // updatedFrame = qBound(m_scaledLimits.first, updatedFrame, m_scaledLimits.second);
+            if (updatedFrame == j.first) {
+                continue;
+            }
+            if (hasKeyframe(updatedFrame)) {
+                if (getPosAtIndex(j.first).frames(pCore->getCurrentFps()) == updatedFrame) {
+                    // No move
+                    continue;
+                }
+                qDebug() << "::: KEYFRAME COLLISION ON SCALE AT: " << updatedFrame;
+                success = false;
+                break;
+            }
+            success = success && moveKeyframeByIndex(j.first, updatedFrame, undo, redo, logUndo, updateView);
+        }
+    }
+    if (success) {
+        m_lastResizePercentage = percentage;
+        if (logUndo) {
+            pCore->pushUndo(undo, redo, i18n("Scale keyframes"));
+        }
+    } else {
+        qDebug() << ":::: SCALED MOVE ABORTED\n\n______________";
+        undo();
+        if (logUndo) {
+            pCore->displayMessage(i18n("Failed to move keyframe"), InformationMessage);
+        }
+    }
+}
+
+void KeyframeModelList::resetScaledInfo()
+{
+    m_scaledKFInfo.clear();
 }

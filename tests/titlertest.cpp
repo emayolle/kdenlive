@@ -99,6 +99,20 @@ bool richTextSupported()
     std::unique_ptr<Mlt::Properties> metadata(pCore->getMltRepository()->metadata(mlt_service_producer_type, "kdenlivetitle"));
     return metadata && metadata->get_double("version") >= 8;
 }
+bool selectiveMltSupported()
+{
+    std::unique_ptr<Mlt::Properties> metadata(pCore->getMltRepository()->metadata(mlt_service_producer_type, "kdenlivetitle"));
+    const double version = metadata ? metadata->get_double("version") : 0;
+    const bool supported = version >= 9;
+    if (qEnvironmentVariable("TITLER_REQUIRE_SELECTIVE_MLT") == QLatin1String("1")) {
+        INFO("Selective title rendering requires kdenlivetitle capability 9; found " << version);
+        REQUIRE(supported);
+    }
+    if (!supported) {
+        WARN("SKIPPED: selective title rendering requires kdenlivetitle capability 9; found " << version);
+    }
+    return supported;
+}
 void richSelect(MyTextItem *item, int anchor, int position)
 {
     QTextCursor cursor(item->document());
@@ -1062,6 +1076,18 @@ TEST_CASE("Rich text outlined resize and undo preserve layout", "[Titler][RichTe
     }
     auto outlined = outlinedTitle(8);
     auto fill = outlinedTitle(0);
+    // Keep fractional glyph rasterization from changing later Qt glyph contours.
+    // The outline painter remains antialiased; image comparisons stay exact.
+    for (MyTextItem *item : {outlined.get(), fill.get()}) {
+        QFont font = item->document()->defaultFont();
+        font.setStyleStrategy(QFont::NoAntialias);
+        item->document()->setDefaultFont(font);
+        richSelect(item, 0, item->toPlainText().size());
+        QTextCharFormat strategy;
+        strategy.setFontStyleStrategy(QFont::NoAntialias);
+        TitlerRichText::apply(item, strategy);
+        richSelect(item, 0, 0);
+    }
     const QImage original = paintOutlinedTitle(outlined.get());
     for (int size : {28, 96, 40, 72, 48}) {
         INFO("Font pixel size: " << size);
@@ -2144,4 +2170,410 @@ TEST_CASE("Font resize undo and redo preserve the committed layout anchor", "[Ti
     REQUIRE(cases == 12);
     REQUIRE(rows.size() == 72);
     REQUIRE(failures == 0);
+}
+
+namespace {
+const QString selectiveGradientRecipe = QStringLiteral("#ffffff00;#ffff0000;0;100;0");
+
+std::unique_ptr<MyTextItem> selectiveGradientGeometryTitle(int start)
+{
+    auto item = std::make_unique<MyTextItem>(QStringLiteral("MMMM XXXX"), nullptr);
+    QFont font(QStringLiteral("DejaVu Sans"));
+    font.setPixelSize(64);
+    item->setFont(font);
+    item->setPos(40, 40);
+    item->setAlignment(Qt::AlignLeft);
+    item->setOutline(0, Qt::black);
+    QTextCharFormat white;
+    white.setForeground(Qt::white);
+    richSelect(item.get(), 0, item->toPlainText().size());
+    TitlerRichText::apply(item.get(), white);
+    QTextCharFormat gradient;
+    gradient.setProperty(TitlerGradientV1::Property, selectiveGradientRecipe);
+    const QRectF box = item->baseBoundingRect();
+    gradient.setForeground(QBrush(TitlerGradientV1::gradientFromString(selectiveGradientRecipe, int(box.width()), int(box.height()))));
+    richSelect(item.get(), start, start + 4);
+    TitlerRichText::apply(item.get(), gradient);
+    richSelect(item.get(), 0, 0);
+    return item;
+}
+
+QImage selectiveGradientPixels(const QImage &image)
+{
+    QImage result(image.size(), QImage::Format_RGBA8888);
+    result.fill(Qt::transparent);
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const QColor color = image.pixelColor(x, y);
+            if (color.alpha() > 0 && color.red() > 200 && color.blue() < 32) {
+                result.setPixelColor(x, y, color);
+            }
+        }
+    }
+    return result;
+}
+
+qreal selectiveGradientMeanGreen(const QImage &image)
+{
+    qint64 sum = 0;
+    int count = 0;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const QColor color = image.pixelColor(x, y);
+            if (color.alpha() > 240 && color.red() > 220 && color.blue() < 20) {
+                sum += color.green();
+                ++count;
+            }
+        }
+    }
+    REQUIRE(count > 100);
+    return qreal(sum) / count;
+}
+
+void checkSelectiveGradientTransition(const QImage &image)
+{
+    int minimumGreen = 255;
+    int maximumGreen = 0;
+    int interiors = 0;
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const QColor color = image.pixelColor(x, y);
+            if (color.alpha() > 240 && color.red() > 220 && color.blue() < 20) {
+                minimumGreen = qMin(minimumGreen, color.green());
+                maximumGreen = qMax(maximumGreen, color.green());
+                ++interiors;
+            }
+        }
+    }
+    REQUIRE(interiors > 100);
+    // The original object-sized brush cannot reach both ends on either word.
+    REQUIRE(minimumGreen < 65);
+    REQUIRE(maximumGreen > 190);
+}
+} // namespace
+
+TEST_CASE("Selective gradients cover their own words after XML restore", "[Titler][SelectiveGradientGeometry][RichText]")
+{
+    for (int start : {0, 5}) {
+        INFO("Gradient starts at UTF-16 position " << start);
+        auto source = selectiveGradientGeometryTitle(start);
+        const QImage before = paintOutlinedTitle(source.get());
+        checkSelectiveGradientTransition(before);
+        const auto xml = TitleDocument::xmlItem(source.get(), 1280, 720);
+        int missing = 0, maxZ = 0;
+        QScopedPointer<QGraphicsItem> loaded(TitleDocument::loadItemFromXml(xml.documentElement(), QString(), 1280, 720, missing, maxZ));
+        REQUIRE(loaded);
+        auto *restored = dynamic_cast<MyTextItem *>(loaded.data());
+        REQUIRE(restored);
+        REQUIRE(missing == 0);
+        REQUIRE(paintOutlinedTitle(restored) == before);
+    }
+}
+
+TEST_CASE("Removing an unrelated suffix leaves selective gradient pixels unchanged", "[Titler][SelectiveGradientGeometry][RichText]")
+{
+    auto source = selectiveGradientGeometryTitle(0);
+    const QImage before = selectiveGradientPixels(paintOutlinedTitle(source.get()));
+    QTextCursor cursor(source->document());
+    cursor.setPosition(4);
+    cursor.setPosition(source->toPlainText().size(), QTextCursor::KeepAnchor);
+    cursor.removeSelectedText();
+    const QImage after = selectiveGradientPixels(paintOutlinedTitle(source.get()));
+    checkSelectiveGradientTransition(after);
+    REQUIRE(after == before);
+}
+
+TEST_CASE("Removing an unrelated prefix preserves selective gradient colors", "[Titler][SelectiveGradientGeometry][RichText]")
+{
+    auto source = selectiveGradientGeometryTitle(5);
+    const QImage before = paintOutlinedTitle(source.get());
+    checkSelectiveGradientTransition(before);
+    QTextCursor cursor(source->document());
+    cursor.setPosition(0);
+    cursor.setPosition(5, QTextCursor::KeepAnchor);
+    cursor.removeSelectedText();
+    const QImage after = paintOutlinedTitle(source.get());
+    checkSelectiveGradientTransition(after);
+    // Removing a fractional-width prefix can shift glyph rasterization phase.
+    // Compare the color distribution with a narrow channel tolerance instead.
+    REQUIRE(qAbs(selectiveGradientMeanGreen(after) - selectiveGradientMeanGreen(before)) < 3.0);
+}
+
+TEST_CASE("Selective gradient editor and MLT pixels agree through typewriter seeking", "[Titler][SelectiveGradientGeometry][RichTextRender]")
+{
+    if (!selectiveMltSupported()) {
+        return;
+    }
+    Mlt::Profile profile("atsc_720p_25");
+    for (int start : {0, 5}) {
+        INFO("Gradient starts at UTF-16 position " << start);
+        auto source = selectiveGradientGeometryTitle(start);
+        const QImage preview = paintOutlinedTitle(source.get());
+        const auto xml = outlinedTitleXml(source.get());
+        Mlt::Producer reference(profile, "kdenlivetitle", "");
+        setProducerTitle(reference, xml);
+        const QImage exported = renderProducerFrame(reference, 240);
+        checkSelectiveGradientTransition(exported);
+        REQUIRE(exported == preview);
+        Mlt::Producer native(profile, "kdenlivetitle", "");
+        setProducerTitle(native, outlinedTitleXml(source.get(), 1));
+        Mlt::Producer external(profile, "kdenlivetitle", "");
+        setProducerTitle(external, xml);
+        Mlt::Filter effect(profile, "typewriter");
+        REQUIRE(effect.is_valid());
+        effect.set("macro_type", 1);
+        effect.set("step_length", 2);
+        effect.set("step_sigma", 0);
+        effect.set("random_seed", 37);
+        REQUIRE(external.attach(effect) == 0);
+        for (Mlt::Producer *animated : {&native, &external}) {
+            const QImage early = renderProducerFrame(*animated, 0);
+            REQUIRE(early != exported);
+            int interiors = 0;
+            for (int y = 0; y < early.height(); ++y) {
+                for (int x = 0; x < early.width(); ++x) {
+                    const QColor color = early.pixelColor(x, y);
+                    if (color.alpha() == 255) {
+                        REQUIRE(color == exported.pixelColor(x, y));
+                        ++interiors;
+                    }
+                }
+            }
+            REQUIRE(interiors > 20);
+            REQUIRE(renderProducerFrame(*animated, 240) == exported);
+            REQUIRE(renderProducerFrame(*animated, 0) == early);
+        }
+    }
+}
+
+namespace {
+void selectShadowRange(MyTextItem *item, int start, int end)
+{
+    QTextCursor cursor(item->document());
+    cursor.setPosition(start);
+    cursor.setPosition(end, QTextCursor::KeepAnchor);
+    item->setTextCursor(cursor);
+}
+
+std::unique_ptr<MyTextItem> selectiveShadowTitle(int start, int blur = 3)
+{
+    auto item = std::make_unique<MyTextItem>(QStringLiteral("MMMM XXXX"), nullptr);
+    QFont font(QStringLiteral("DejaVu Sans"));
+    font.setPixelSize(64);
+    item->setFont(font);
+    item->setPos(40, 40);
+    item->setAlignment(Qt::AlignLeft);
+    item->setOutline(0, Qt::black);
+    item->updateShadow(false, 3, 3, 3, QColor(0, 0, 0, 100));
+    item->setTextInteractionFlags(Qt::TextEditorInteraction);
+    selectShadowRange(item.get(), 0, 9);
+    QTextCharFormat format;
+    format.setForeground(Qt::white);
+    TitlerRichText::apply(item.get(), format);
+    selectShadowRange(item.get(), start, start + 4);
+    format = QTextCharFormat();
+    format.setProperty(TitlerShadowV1::Enabled, true);
+    format.setProperty(TitlerShadowV1::Color, QColor(0, 255, 0));
+    format.setProperty(TitlerShadowV1::Blur, blur);
+    format.setProperty(TitlerShadowV1::OffsetX, 0);
+    format.setProperty(TitlerShadowV1::OffsetY, 100);
+    TitlerRichText::apply(item.get(), format);
+    selectShadowRange(item.get(), 0, 0);
+    item->setTextInteractionFlags(Qt::NoTextInteraction);
+    return item;
+}
+
+QImage greenShadowPixels(const QImage &image)
+{
+    QImage result(image.size(), QImage::Format_RGBA8888);
+    result.fill(Qt::transparent);
+    for (int y = 0; y < image.height(); ++y) {
+        for (int x = 0; x < image.width(); ++x) {
+            const auto color = image.pixelColor(x, y);
+            if (color.alpha() > 0 && color.green() > color.red() + 60 && color.green() > color.blue() + 60) result.setPixelColor(x, y, color);
+        }
+    }
+    return result;
+}
+} // namespace
+
+TEST_CASE("Selected shadow pixels survive title XML restore and neighboring deletion", "[Titler][SelectiveShadow][RichText]")
+{
+    for (int start : {0, 5}) {
+        for (int blur : {0, 3, 12}) {
+            INFO("start=" << start << ", blur=" << blur);
+            auto item = selectiveShadowTitle(start, blur);
+            const auto expected = paintOutlinedTitle(item.get());
+            REQUIRE(!greenShadowPixels(expected).isNull());
+            bool found = false;
+            const qreal boundary = 40 + item->document()->begin().layout()->lineAt(0).cursorToX(5);
+            const auto shadow = greenShadowPixels(expected);
+            for (int y = 120; y < shadow.height(); ++y) {
+                for (int x = 0; x < shadow.width(); ++x) {
+                    if (!qAlpha(shadow.pixel(x, y))) continue;
+                    found = true;
+                    REQUIRE((start == 0 ? x <= boundary + 2 * blur + 3 : x >= boundary - 2 * blur - 3));
+                }
+            }
+            REQUIRE(found);
+            const auto xml = TitleDocument::xmlItem(item.get(), 1280, 720);
+            REQUIRE(!xml.documentElement().firstChildElement("content").firstChildElement("richtext-shadows").isNull());
+            int missing = 0, maxZ = 0;
+            QScopedPointer<QGraphicsItem> loaded(TitleDocument::loadItemFromXml(xml.documentElement(), QString(), 1280, 720, missing, maxZ));
+            auto *restored = dynamic_cast<MyTextItem *>(loaded.data());
+            REQUIRE(restored);
+            REQUIRE(missing == 0);
+            REQUIRE(paintOutlinedTitle(restored) == expected);
+            if (start == 0) {
+                QTextCursor cursor(item->document());
+                cursor.setPosition(4);
+                cursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
+                cursor.removeSelectedText();
+                REQUIRE(greenShadowPixels(paintOutlinedTitle(item.get())) == shadow);
+            }
+        }
+    }
+}
+
+TEST_CASE("Selective shadow edits preserve selection and unrelated formats through undo", "[Titler][SelectiveShadow][RichText]")
+{
+    auto item = selectiveShadowTitle(5);
+    item->setTextInteractionFlags(Qt::TextEditorInteraction);
+    selectShadowRange(item.get(), 5, 9);
+    const auto original = paintOutlinedTitle(item.get());
+    const auto fill = item->textCursor().charFormat().foreground();
+    item->applyShadowProperty(TitlerShadowV1::Blur, 12);
+    REQUIRE(item->textCursor().selectionStart() == 5);
+    REQUIRE(item->textCursor().selectionEnd() == 9);
+    REQUIRE(item->textCursor().charFormat().foreground() == fill);
+    item->document()->undo();
+    REQUIRE(paintOutlinedTitle(item.get()) == original);
+    item->document()->redo();
+    REQUIRE(item->textCursor().charFormat().property(TitlerShadowV1::Blur).toInt() == 12);
+}
+
+TEST_CASE("Selective shadow editor and export agree including typewriter seeking", "[Titler][SelectiveShadow][RichTextRender]")
+{
+    if (!selectiveMltSupported()) {
+        return;
+    }
+    Mlt::Profile profile("atsc_720p_25");
+    for (int start : {0, 5}) {
+        for (int blur : {0, 3, 12}) {
+            for (auto alignment : {Qt::AlignLeft, Qt::AlignHCenter, Qt::AlignRight}) {
+                auto item = selectiveShadowTitle(start, blur);
+                item->setTextWidth(600);
+                item->setAlignment(alignment);
+                const auto expected = paintOutlinedTitle(item.get());
+                const auto xml = outlinedTitleXml(item.get());
+                Mlt::Producer reference(profile, "kdenlivetitle", "");
+                setProducerTitle(reference, xml);
+                REQUIRE(renderProducerFrame(reference, 240) == expected);
+                for (int mode : {1, 2, 3}) {
+                    Mlt::Producer native(profile, "kdenlivetitle", "");
+                    setProducerTitle(native, outlinedTitleXml(item.get(), mode));
+                    Mlt::Producer external(profile, "kdenlivetitle", "");
+                    setProducerTitle(external, xml);
+                    Mlt::Filter effect(profile, "typewriter");
+                    REQUIRE(effect.is_valid());
+                    effect.set("macro_type", mode);
+                    effect.set("step_length", 2);
+                    effect.set("step_sigma", 0);
+                    effect.set("random_seed", 37);
+                    REQUIRE(external.attach(effect) == 0);
+                    for (auto *animated : {&native, &external}) {
+                        const QByteArray before(animated->get("xmldata"));
+                        const auto first = renderProducerFrame(*animated, 0);
+                        REQUIRE(!first.isNull());
+                        if (start == 5 && mode != 3) {
+                            const auto mask = greenShadowPixels(first);
+                            for (int y = 0; y < mask.height(); ++y)
+                                for (int x = 0; x < mask.width(); ++x)
+                                    REQUIRE(qAlpha(mask.pixel(x, y)) == 0);
+                        }
+                        REQUIRE(renderProducerFrame(*animated, 240) == expected);
+                        REQUIRE(renderProducerFrame(*animated, 0) == first);
+                        REQUIRE(QByteArray(animated->get("xmldata")) == before);
+                    }
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Selective shadow silhouette follows actual text alpha", "[Titler][SelectiveShadow][RichText]")
+{
+    for (const auto &text : {QStringLiteral("MMMM XXXX"), QStringLiteral("MMMM\nXXX yyyy"), QString::fromUtf8("ABC مرحبا بالعالم XYZ"),
+                             QString::fromUtf8("Ä office 🙂 ffi")}) {
+        for (int decoration : {0, 1, 2, 3}) {
+            INFO("text=" << text.toStdString() << ", decoration=" << decoration);
+            auto item = selectiveShadowTitle(0, 0);
+            item->setPlainText(text);
+            item->setTextInteractionFlags(Qt::TextEditorInteraction);
+            selectShadowRange(item.get(), 0, text.size());
+            QTextCharFormat format;
+            format.setForeground(Qt::white);
+            format.setProperty(TitlerShadowV1::Enabled, false);
+            format.setFontUnderline(decoration == 1);
+            format.setFontOverline(decoration == 2);
+            format.setFontStrikeOut(decoration == 2);
+            if (decoration == 3) {
+                format.setFontWeight(QFont::Bold);
+                format.setFontItalic(true);
+                format.setFontLetterSpacingType(QFont::AbsoluteSpacing);
+                format.setFontLetterSpacing(2.5);
+                item->setOutline(6, Qt::black);
+            }
+            TitlerRichText::apply(item.get(), format);
+            selectShadowRange(item.get(), 0, 0);
+            item->setTextInteractionFlags(Qt::NoTextInteraction);
+            const auto body = paintOutlinedTitle(item.get());
+            item->setTextInteractionFlags(Qt::TextEditorInteraction);
+            selectShadowRange(item.get(), 0, text.size());
+            format = QTextCharFormat();
+            format.setProperty(TitlerShadowV1::Enabled, true);
+            format.setProperty(TitlerShadowV1::Color, QColor(0, 255, 0));
+            format.setProperty(TitlerShadowV1::Blur, 0);
+            format.setProperty(TitlerShadowV1::OffsetX, 0);
+            format.setProperty(TitlerShadowV1::OffsetY, 100);
+            TitlerRichText::apply(item.get(), format);
+            selectShadowRange(item.get(), 0, 0);
+            item->setTextInteractionFlags(Qt::NoTextInteraction);
+            QImage tinted = body;
+            {
+                QPainter painter(&tinted);
+                painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+                painter.fillRect(tinted.rect(), Qt::green);
+            }
+            QImage expected(body.size(), body.format());
+            expected.fill(Qt::transparent);
+            {
+                QPainter painter(&expected);
+                painter.drawImage(0, 100, tinted);
+                painter.drawImage(0, 0, body);
+            }
+            const auto actual = paintOutlinedTitle(item.get()).convertToFormat(QImage::Format_ARGB32_Premultiplied);
+            expected = expected.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+            int mismatched = 0;
+            // Two channel levels allow premultiplied-alpha conversion rounding.
+            for (int y = 0; y < body.height(); ++y)
+                for (int x = 0; x < body.width(); ++x) {
+                    const auto a = actual.pixel(x, y), b = expected.pixel(x, y);
+                    mismatched +=
+                        qAbs(qAlpha(a) - qAlpha(b)) > 2 || qAbs(qRed(a) - qRed(b)) > 2 || qAbs(qGreen(a) - qGreen(b)) > 2 || qAbs(qBlue(a) - qBlue(b)) > 2;
+                }
+            if (mismatched != 0) {
+                const QString directory = qEnvironmentVariable("SHADOW_TEST_ARTIFACTS");
+                if (!directory.isEmpty() && QDir().mkpath(directory)) {
+                    const QString name = QStringLiteral("native-alpha-%1-%2")
+                                             .arg(QString::fromLatin1(QCryptographicHash::hash(text.toUtf8(), QCryptographicHash::Sha256).toHex()).left(12))
+                                             .arg(decoration);
+                    body.save(QDir(directory).filePath(name + QStringLiteral("-body.png")));
+                    expected.save(QDir(directory).filePath(name + QStringLiteral("-expected.png")));
+                    actual.save(QDir(directory).filePath(name + QStringLiteral("-actual.png")));
+                }
+            }
+            REQUIRE(mismatched == 0);
+        }
+    }
 }

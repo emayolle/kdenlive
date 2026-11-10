@@ -194,6 +194,8 @@ public:
     void applyTimecodeDisplayStyling();
     /** @brief Audio thumbnail is outdated, inform view */
     void markAudioDirty(bool dirty);
+    /** @brief Register an audio track for monitoring */
+    void registerAudioTrack(int tid, bool addTrack);
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;
@@ -288,6 +290,8 @@ private:
     void buildSplitEffect(Mlt::Producer *original);
     /** @brief Returns true if monitor is currently visible (not in a tab or hidden)*/
     bool monitorVisible() const;
+    /** @brief Returns a filter with requested name if it already exists on the producer, nullptr otherwise */
+    Mlt::Filter *getFilter(const QString &name, std::shared_ptr<Mlt::Producer> producer);
     /** To easily get them when creating the right click menu */
     QAction *m_markIn;
     QAction *m_markOut;

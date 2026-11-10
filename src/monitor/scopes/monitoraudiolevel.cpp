@@ -6,6 +6,7 @@ SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
 
 #include "monitoraudiolevel.h"
+#include "core.h"
 
 #include <cmath>
 
@@ -30,36 +31,35 @@ MonitorAudioLevel::MonitorAudioLevel(QWidget *parent)
 
 MonitorAudioLevel::~MonitorAudioLevel() = default;
 
+double MonitorAudioLevel::audioLevelDbFromLinear(double dbValue)
+{
+    if (dbValue <= 0.0) return -100.0;
+
+    double level = 20.0 * log10(qMin(dbValue, 1.0));
+    return qRound(level * 10.0) / 10.0;
+}
+
 void MonitorAudioLevel::refreshScope(const QSize & /*size*/, bool /*full*/)
 {
     SharedFrame sFrame;
     // The queue can be cleared from the GUI thread meanwhile, so don't block on pop()
     while (m_queue.tryPop(sFrame)) {
         if (sFrame.is_valid()) {
-            int samples = sFrame.get_audio_samples();
-            if (samples <= 0) {
-                continue;
-            }
-            // TODO: the 200 value is aligned with the MLT audiolevel filter, but seems arbitrary.
-            samples = qMin(200, samples);
-            int channels = sFrame.get_audio_channels();
-            QVector<double> levels;
-            const int16_t *audio = static_cast<const int16_t *>(sFrame.get_audio(mlt_audio_s16));
-            for (int c = 0; c < channels; c++) {
-                int16_t peak = 0;
-                const int16_t *p = audio + c;
-                for (int s = 0; s < samples; s++) {
-                    int16_t sample = abs(*p);
-                    if (sample > peak) peak = sample;
-                    p += channels;
+            QMap<int, QVector<double>> levelsMap;
+            // Tracks levels
+            for (auto &tid : audioTrackIds) {
+                QVector<double> levels;
+                for (int ix = 0; ix < audioChannels; ix++) {
+                    const QByteArray audioKey = QStringLiteral("meta.audio.track.%1.audio_level.%2").arg(tid).arg(ix).toLatin1();
+                    const double channelData = sFrame.get_double(audioKey.constData());
+                    levels << audioLevelDbFromLinear(channelData);
                 }
-                if (peak == 0) {
-                    levels << -100;
-                } else {
-                    levels << 20 * log10((double)peak / (double)std::numeric_limits<int16_t>::max());
+                if (tid == -1) {
+                    Q_EMIT audioLevelsAvailable(levels);
                 }
+                levelsMap.insert(tid, levels);
             }
-            Q_EMIT audioLevelsAvailable(levels);
+            Q_EMIT pCore->audioLevelsAvailable(levelsMap);
         }
     }
 }

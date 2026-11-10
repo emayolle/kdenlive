@@ -490,7 +490,7 @@ void MainWindow::init()
     m_undoView->setContextMenuPolicy(Qt::ActionsContextMenu);
     m_undoViewDock = addDock(i18n("Undo History"), QStringLiteral("undo_history"), m_undoView, KDDockWidgets::Location_None, m_projectBinDock);
 
-    connect(m_commandStack, &QUndoGroup::cleanChanged, [this, cleanHistory](bool isClean) {
+    connect(m_commandStack, &QUndoGroup::cleanChanged, this, [this, cleanHistory](bool isClean) {
         m_saveAction->setDisabled(isClean);
         cleanHistory->setDisabled(isClean);
     });
@@ -518,7 +518,8 @@ void MainWindow::init()
     m_mixerDock->close();
     m_projectBinDock->setAsCurrentTab();
 
-    bool firstRun = readOptions();
+    initializeOptions();
+
     if (KdenliveSettings::lastCacheCheck().isNull()) {
         // Define a date for first check
         KdenliveSettings::setLastCacheCheck(QDateTime::currentDateTime());
@@ -594,6 +595,22 @@ void MainWindow::init()
             cutShortcuts.takeLast();
             officialCut->setShortcuts(cutShortcuts);
         }
+    }
+    // Redirect help entry to our own function
+    // First delete the default help action
+    QAction *officialHelp = actionCollection()->action(KStandardAction::name(KStandardAction::HelpContents));
+    // Save and later restore any custom shortcuts
+    QList<QKeySequence> helpShortcuts = officialHelp->shortcuts();
+    actionCollection()->removeAction(officialHelp);
+    // Now recreate our own
+    KStandardAction::helpContents(this, &MainWindow::appHelpActivated, actionCollection());
+    officialHelp = actionCollection()->action(KStandardAction::name(KStandardAction::HelpContents));
+    officialHelp->setShortcuts(helpShortcuts);
+    // Replug it in the Help menu
+    QMenu *helpMenu = static_cast<QMenu *>(factory()->container(QStringLiteral("help"), this));
+    if (helpMenu) {
+        QAction *whatsThis = actionCollection()->action(KStandardAction::name(KStandardAction::WhatsThis));
+        helpMenu->insertAction(whatsThis, officialHelp);
     }
 
     // Only start saving config once all GUI setup is done.
@@ -1011,10 +1028,9 @@ void MainWindow::saveOptions()
     pCore->projectManager()->saveRecentFiles();
 }
 
-bool MainWindow::readOptions()
+void MainWindow::initializeOptions()
 {
     KSharedConfigPtr config = KSharedConfig::openConfig();
-    pCore->projectManager()->recentFilesAction()->loadEntries(KConfigGroup(config, "Recent Files"));
 
     if (KdenliveSettings::defaultprojectfolder().isEmpty()) {
         QDir dir(QStandardPaths::writableLocation(QStandardPaths::MoviesLocation));
@@ -1064,7 +1080,6 @@ bool MainWindow::readOptions()
     if (KdenliveSettings::guidesCategories().isEmpty()) {
         KdenliveSettings::setGuidesCategories(KdenliveDoc::getDefaultGuideCategories());
     }
-    return firstRun;
 }
 
 void MainWindow::slotRunWizard()
@@ -1592,7 +1607,10 @@ void MainWindow::slotEditKeys()
     // Update the shortcut conflicts list bewtween mainwindow and media browser
     connect(dialog, &KShortcutsDialog::saved, this, [this] {
         pCore->mediaBrowser()->detectShortcutConflicts();
-        factory()->refreshActionProperties();
+        guiFactory()->refreshActionProperties();
+        // Drop cached data
+        guiFactory()->removeClient(this);
+        guiFactory()->addClient(this);
     });
     dialog->configure(true);
 }
@@ -3848,6 +3866,7 @@ void MainWindow::addBin(Bin *bin, const QString &binName, bool updateCount, cons
             }
         }
     });
+    connect(pCore->projectItemModel().get(), &ProjectItemModel::folderNameChanged, this, &MainWindow::folderRenamed, Qt::UniqueConnection);
     m_binWidgets << bin;
     if (m_binWidgets.size() > 1) {
         // This is a secondary bin widget
@@ -3926,23 +3945,31 @@ void MainWindow::loadExtraBins(const QStringList binInfo)
     pCore->lastActiveBin.clear();
 
     for (auto &bin : m_binWidgets) {
-        KDDockWidgets::QtWidgets::DockWidget *dock = qobject_cast<KDDockWidgets::QtWidgets::DockWidget *>(bin->parentWidget());
+        auto *dock = qobject_cast<KDDockWidgets::QtWidgets::DockWidget *>(bin->parentWidget());
         if (!dock) {
             continue;
         }
+
         bool binFound = false;
         const QString dockName = dock->objectName() + QLatin1Char(':');
+
         for (const QString &info : binInfo) {
             if (info.startsWith(dockName)) {
-                existingNames << bin->loadInfo(info.split(QLatin1Char(':')), existingNames);
+                folderName = bin->loadInfo(info.split(QLatin1Char(':')), existingNames);
                 binFound = true;
                 break;
             }
         }
+
         if (!binFound) {
-            // Init bin with default settings
-            existingNames << bin->loadInfo({}, existingNames);
+            folderName = bin->loadInfo({}, existingNames);
         }
+
+        if (!folderName.isEmpty()) {
+            dock->setTitle(folderName);
+        }
+
+        existingNames << folderName;
     }
 }
 
@@ -3963,6 +3990,7 @@ void MainWindow::folderRenamed(const QString &binId, const QString &folderName)
             KDDockWidgets::QtWidgets::DockWidget *dock = qobject_cast<KDDockWidgets::QtWidgets::DockWidget *>(b->parentWidget());
             if (dock) {
                 dock->setWindowTitle(folderName);
+                dock->setTitle(folderName);
             }
             break;
         }

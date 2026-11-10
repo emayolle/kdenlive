@@ -510,9 +510,6 @@ Monitor::Monitor(Kdenlive::MonitorId id, MonitorManager *manager, QWidget *paren
         m_audioMeterWidget->setVisibility(false);
     } else {
         m_audioMeterWidget->setVisibility((KdenliveSettings::monitoraudio() & m_id) != 0);
-        if (id == Kdenlive::ProjectMonitor) {
-            connect(m_audioMeterWidget, &MonitorAudioLevel::audioLevelsAvailable, pCore.get(), &Core::audioLevelsAvailable);
-        }
     }
 
     // Trimming tool bar buttons
@@ -620,6 +617,17 @@ void Monitor::slotGetCurrentImage(bool request)
         QTimer::singleShot(500, m_monitorManager, &MonitorManager::checkScopes);
     } else {
         m_glMonitor->releaseAnalyse();
+    }
+}
+
+void Monitor::registerAudioTrack(int tid, bool addTrack)
+{
+    if (addTrack) {
+        if (std::find(m_audioMeterWidget->audioTrackIds.begin(), m_audioMeterWidget->audioTrackIds.end(), tid) == m_audioMeterWidget->audioTrackIds.end()) {
+            m_audioMeterWidget->audioTrackIds.push_back(tid);
+        }
+    } else {
+        m_audioMeterWidget->audioTrackIds.remove(tid);
     }
 }
 
@@ -813,6 +821,19 @@ void Monitor::slotForceSize(QAction *a)
     updateGeometry();
 }
 
+Mlt::Filter *Monitor::getFilter(const QString &name, std::shared_ptr<Mlt::Producer> producer)
+{
+    for (int i = 0; i < producer->filter_count(); i++) {
+        Mlt::Filter *filter = producer->filter(i);
+        if (filter) {
+            const auto filterName = QString::fromUtf8(filter->get("mlt_service"));
+            if (name == filterName) return filter;
+            delete filter;
+        }
+    }
+    return nullptr;
+}
+
 void Monitor::buildBackgroundedProducer(int pos)
 {
     if (m_controller == nullptr) {
@@ -835,8 +856,25 @@ void Monitor::buildBackgroundedProducer(int pos)
     if (!m_openMutex.tryLock()) {
         return;
     }
+    std::unique_ptr<Mlt::Filter> monitorFilter{nullptr};
+    if (m_controller->hasAudio()) {
+        auto levelsFilter = getFilter(QStringLiteral("audiolevel"), producer);
+        if (levelsFilter) {
+            delete levelsFilter;
+        } else {
+            monitorFilter.reset(new Mlt::Filter(pCore->getProjectProfile(), "audiolevel"));
+            if (monitorFilter->is_valid()) {
+                monitorFilter->set("iec_scale", 0);
+                monitorFilter->set("prefix", "meta.audio.track.-1.audio_level.");
+                monitorFilter->set("internal_added", 237);
+            }
+        }
+    }
     if (!m_controller->hasAlpha()) {
         // No compositing required
+        if (monitorFilter) {
+            producer->attach(*monitorFilter.get());
+        }
         m_glMonitor->setProducer(producer, isActive(), pos);
     } else {
         // Add background compositing
@@ -855,6 +893,9 @@ void Monitor::buildBackgroundedProducer(int pos)
         transition->set("always_active", 1);
         transition->set_tracks(0, 1);
         trac.plant_transition(*transition.get(), 0, 1);
+        if (monitorFilter) {
+            trac.attach(*monitorFilter.get());
+        }
         m_glMonitor->setProducer(std::make_shared<Mlt::Producer>(trac), isActive(), pos);
     }
     m_openMutex.unlock();
@@ -1411,7 +1452,9 @@ void Monitor::wheelEvent(QWheelEvent *event)
 void Monitor::mouseDoubleClickEvent(QMouseEvent *event)
 {
     event->accept();
-    slotSwitchFullScreen();
+    if (!m_toolbar->underMouse()) {
+        slotSwitchFullScreen();
+    }
 }
 
 void Monitor::keyPressEvent(QKeyEvent *event)
@@ -1715,7 +1758,6 @@ void Monitor::slotSeek(int pos)
         return;
     }
     m_glMonitor->getControllerProxy()->setPosition(pos);
-    Q_EMIT m_monitorManager->cleanMixer();
 }
 
 void Monitor::checkOverlay(int pos)
@@ -2174,6 +2216,15 @@ bool Monitor::slotOpenClip(const std::shared_ptr<ProjectClip> &controller, int i
             disconnect(m_controller.get(), &ProjectClip::boundsChanged, m_glMonitor->getControllerProxy(), &MonitorProxy::updateClipBounds);
             disconnect(m_controller.get(), &ProjectClip::registeredClipChanged, m_controller.get(), &ProjectClip::checkClipBounds);
         }
+        if (m_controller->hasAudio()) {
+            // Remove monitor's level filter
+            auto producer = m_controller->sequenceProducer(m_activeSequence);
+            Mlt::Filter *levelsFilter = getFilter(QStringLiteral("audiolevel"), producer);
+            if (levelsFilter) {
+                producer->detach(*levelsFilter);
+                delete levelsFilter;
+            }
+        }
     } else if (controller == nullptr) {
         // Nothing to do
         pCore->taskManager.displayedClip = -1;
@@ -2618,9 +2669,6 @@ void Monitor::updateAudioForAnalysis()
 void Monitor::onFrameDisplayed(const SharedFrame &frame)
 {
     Q_EMIT m_monitorManager->frameDisplayed(frame);
-    if (m_id == Kdenlive::ProjectMonitor) {
-        Q_EMIT pCore->updateMixerLevels(frame.get_position());
-    }
     const bool wasPlaying = m_playAction->isActive();
     if (!m_glMonitor->checkFrameNumber(frame.get_position(), wasPlaying)) {
         updatePlayAction(false);
@@ -3126,7 +3174,6 @@ void Monitor::processSeek(int pos, bool noAudioScrub)
         pause();
     }
     m_glMonitor->requestSeek(pos, noAudioScrub);
-    Q_EMIT m_monitorManager->cleanMixer();
 }
 
 void Monitor::requestSeek(int pos)

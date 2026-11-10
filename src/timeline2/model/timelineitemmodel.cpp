@@ -265,6 +265,7 @@ QHash<int, QByteArray> TimelineItemModel::roleNames() const
     roles[MaxDurationRole] = "maxDuration";
     roles[MarkersRole] = "markers";
     roles[KeyframesRole] = "keyframeModel";
+    roles[KeyframesListRole] = "keyframeModelList";
     roles[ShowKeyframesRole] = "showKeyframes";
     roles[PlaylistStateRole] = "clipState";
     roles[StatusRole] = "clipStatus";
@@ -377,6 +378,9 @@ QVariant TimelineItemModel::data(const QModelIndex &index, int role) const
         }
         case KeyframesRole: {
             return QVariant::fromValue<KeyframeModel *>(clip->getKeyframeModel());
+        }
+        case KeyframesListRole: {
+            return QVariant::fromValue<KeyframeModelList *>(clip->getKeyframeModelList());
         }
         case PlaylistStateRole:
             return QVariant::fromValue(clip->clipState());
@@ -1211,4 +1215,16 @@ int TimelineItemModel::getEndMixDuration(int cid) const
         }
     }
     return 0;
+}
+
+std::list<int> TimelineItemModel::getAudioTrackIndexes() const
+{
+    std::list<int> trackIds;
+    std::list<std::shared_ptr<TrackModel>>::const_reverse_iterator it;
+    for (it = m_allTracks.rbegin(); it != m_allTracks.rend(); it++) {
+        if ((*it)->isAudioTrack() && !(*it)->isMute()) {
+            trackIds.push_back((*it)->getId());
+        }
+    }
+    return trackIds;
 }

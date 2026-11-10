@@ -8,6 +8,7 @@ kde_enable_exceptions()
 
 set(KdenliveTest_SOURCES
     avcurvetest.cpp
+    audiocorrelationtest.cpp
     audiolevelstasktest.cpp
     bintest.cpp
     cachetest.cpp
@@ -17,6 +18,7 @@ set(KdenliveTest_SOURCES
     documenttest.cpp
     effectstest.cpp
     effectsgrouptest.cpp
+    ffttoolstest.cpp
     filetest.cpp # codespell:ignore filetest
     gradienteditwidgettest.cpp
     groupstest.cpp

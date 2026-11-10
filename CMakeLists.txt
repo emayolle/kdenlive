@@ -7,8 +7,8 @@ cmake_minimum_required(VERSION 3.16)
 # stable release. An additional number can be used for bugfix-only releases.
 
 # KDE Application Version, managed by release script
-set (RELEASE_SERVICE_VERSION_MAJOR "26")
-set (RELEASE_SERVICE_VERSION_MINOR "11")
+set (RELEASE_SERVICE_VERSION_MAJOR "27")
+set (RELEASE_SERVICE_VERSION_MINOR "03")
 set (RELEASE_SERVICE_VERSION_MICRO "70")
 
 set(KDENLIVE_VERSION "${RELEASE_SERVICE_VERSION_MAJOR}.${RELEASE_SERVICE_VERSION_MINOR}.${RELEASE_SERVICE_VERSION_MICRO}")
@@ -38,7 +38,7 @@ option(BUILD_DESIGNERPLUGIN "Build plugin for Qt Designer" OFF)
 
 # Minimum versions of main dependencies.
 set(MLT_MIN_MAJOR_VERSION 7)
-set(MLT_MIN_MINOR_VERSION 38)
+set(MLT_MIN_MINOR_VERSION 42)
 set(MLT_MIN_PATCH_VERSION 0)
 set(MLT_MIN_VERSION ${MLT_MIN_MAJOR_VERSION}.${MLT_MIN_MINOR_VERSION}.${MLT_MIN_PATCH_VERSION})
 
@@ -104,7 +104,6 @@ find_package(KF${KF_MAJOR} ${KF_DEP_VERSION}
     Purpose
 
     OPTIONAL_COMPONENTS
-    DocTools
     Crash
 )
 
@@ -186,11 +185,6 @@ if(APPLE)
     set(DATA_INSTALL_PREFIX "")
 else()
     set(DATA_INSTALL_PREFIX "/kdenlive")
-endif()
-
-if(KF${KF_MAJOR}DocTools_FOUND)
-    add_subdirectory(doc)
-    kdoctools_install(po)
 endif()
 
 # Get current version.
