@@ -20,7 +20,6 @@
 #include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QIcon>
-#include <QKeyEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QShortcut>
@@ -90,21 +89,6 @@ QList<QAction *> windowActions(QWidget *window)
     return actions;
 }
 
-ShortcutHandling shortcutHandling(const QKeyEvent *keyEvent)
-{
-    if (isEditingShortcut(keyEvent->keyCombination())) {
-        // The editor has an action for this key, the window of Kdenlive must
-        // not handle it. The event is ignored so that the action of the editor
-        // is triggered.
-        return ShortcutHandling::Ignore;
-    }
-    if (keyEvent->modifiers() == Qt::NoModifier || keyEvent->modifiers() == Qt::KeypadModifier) {
-        // The key is typed in the editor. Kdenlive has shortcuts without
-        // modifier, they would swallow the keys.
-        return ShortcutHandling::Accept;
-    }
-    return ShortcutHandling::Pass;
-}
 bool isConflictingShortcut(const QKeySequence &shortcut)
 {
     if (shortcut.isEmpty()) {
@@ -175,9 +159,8 @@ ScriptEditor::ScriptEditor(QWidget *parent)
 
     connect(m_runButton, &QPushButton::clicked, this, &ScriptEditor::runScript);
 
-    // The keys that are pressed in the editor are watched, Kdenlive has
-    // shortcuts for the same keys and they would be triggered instead of the
-    // ones of the editor
+    // The focus of the editor is watched: when it has the focus, the
+    // shortcuts of the window that would steal the keys are taken away
     qApp->installEventFilter(this);
 }
 
@@ -285,24 +268,11 @@ bool ScriptEditor::eventFilter(QObject *watched, QEvent *event)
         if (event->type() == QEvent::FocusIn || event->type() == QEvent::FocusOut) {
             updateWindowShortcuts(inEditor);
         }
-        if (event->type() == QEvent::ShortcutOverride && inEditor) {
-            const auto *keyEvent = static_cast<QKeyEvent *>(event);
-            switch (ScriptEditorInternal::shortcutHandling(keyEvent)) {
-            case ScriptEditorInternal::ShortcutHandling::Ignore:
-                // The editor has an action for this key, it must be
-                // triggered. The event is ignored so that the shortcut
-                // system looks for an action.
-                event->ignore();
-                return true;
-            case ScriptEditorInternal::ShortcutHandling::Accept:
-                // The key is typed in the editor, the window of Kdenlive
-                // must not see it
-                event->accept();
-                return true;
-            case ScriptEditorInternal::ShortcutHandling::Pass:
-                break;
-            }
-        }
+        // The QEvent::ShortcutOverride is left alone on purpose: Kate needs it
+        // to know which keys it handles itself (the backspace among them).
+        // Taking it would stop Kate from editing the text. The shortcuts of
+        // Kdenlive are taken away from the window instead, see
+        // updateWindowShortcuts().
     }
     return QWidget::eventFilter(watched, event);
 }

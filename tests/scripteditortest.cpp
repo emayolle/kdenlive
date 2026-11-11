@@ -12,6 +12,7 @@ using namespace ScriptEditorInternal;
 
 #include <KActionCategory>
 #include <KActionCollection>
+#include <KTextEditor/Cursor>
 #include <KTextEditor/View>
 #include <KXmlGuiWindow>
 
@@ -108,4 +109,42 @@ TEST_CASE("Script editor shortcuts", "[Scripting]")
     editor->updateWindowShortcuts(false);
     REQUIRE(categoryAction.shortcut().toString() == QKeySequence(QStringLiteral("A")).toString());
     REQUIRE(selectAllAction.shortcut().toString() == QKeySequence(QKeySequence::SelectAll).toString());
+}
+
+TEST_CASE("The keys typed in the editor are handled by the editor", "[Scripting]")
+{
+    QWidget window;
+    window.resize(600, 400);
+    auto *editor = new ScriptEditor(&window);
+    window.show();
+    QApplication::processEvents();
+
+    auto *view = editor->findChild<KTextEditor::View *>();
+    REQUIRE(view != nullptr);
+    QWidget *textWidget = ScriptEditorInternal::textWidgetOf(view);
+    REQUIRE(textWidget != nullptr);
+
+    editor->setScript(QString());
+    editor->focusEditor();
+    QApplication::processEvents();
+
+    // A letter is typed in the editor
+    QTest::keyClick(textWidget, Qt::Key_A);
+    QApplication::processEvents();
+    REQUIRE(editor->script() == QStringLiteral("a"));
+
+    // The backspace removes it. Kate handles this key itself, it needs the
+    // QEvent::ShortcutOverride to know that it can take it: the editor must
+    // not swallow that event.
+    QTest::keyClick(textWidget, Qt::Key_Backspace);
+    QApplication::processEvents();
+    REQUIRE(editor->script().isEmpty());
+
+    // The same in the middle of a text
+    editor->setScript(QStringLiteral("abc"));
+    view->setCursorPosition(KTextEditor::Cursor(0, 2));
+    QApplication::processEvents();
+    QTest::keyClick(textWidget, Qt::Key_Backspace);
+    QApplication::processEvents();
+    REQUIRE(editor->script() == QStringLiteral("ac"));
 }

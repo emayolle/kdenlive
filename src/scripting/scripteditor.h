@@ -12,7 +12,6 @@
 
 class QAction;
 class KActionCategory;
-class QKeyEvent;
 class QShortcut;
 
 namespace KTextEditor {
@@ -25,21 +24,6 @@ class QPlainTextEdit;
 class QPushButton;
 
 namespace ScriptEditorInternal {
-/** @brief What to do with a key that is pressed in the editor. */
-enum class ShortcutHandling {
-    Pass,   /**< The window of Kdenlive handles the shortcut. */
-    Accept, /**< The key is typed in the editor. */
-    Ignore, /**< The editor has an action for this key, it must be triggered. */
-};
-
-/**
- * @brief Tells what to do with a key that is pressed in the editor.
- *
- * Kdenlive has shortcuts for the keys that are used in the editor, they must
- * not steal them.
- */
-ShortcutHandling shortcutHandling(const QKeyEvent *keyEvent);
-
 /**
  * @brief Tells whether a shortcut of the window is in conflict with the editor.
  *
@@ -111,10 +95,11 @@ public:
     bool isEditorAction(QAction *action) const;
 
 protected:
-    /** @brief Keeps the editing shortcuts in the editor.
+    /**
+     * @brief Watches the focus of the editor.
      *
-     * Kdenlive has its own shortcuts for the same keys, they must not be
-     * triggered while the user writes a script.
+     * When the editor has the focus, the shortcuts of the window that would
+     * steal the keys are taken away from it.
      */
     bool eventFilter(QObject *watched, QEvent *event) override;
 
