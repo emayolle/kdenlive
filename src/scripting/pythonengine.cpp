@@ -617,6 +617,31 @@ PyObject *projectRedo(PyObject *self, PyObject *)
     return PyBool_FromLong(result);
 }
 
+PyObject *projectZone(PyObject *self, PyObject *)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    return fromVariantMap(api->zone());
+}
+
+PyObject *projectSetZone(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int in = 0;
+    int out = 0;
+    if (!PyArg_ParseTuple(args, "ii", &in, &out)) {
+        return nullptr;
+    }
+    const bool result = api->setZone(in, out);
+    PyErr_Clear();
+    return PyBool_FromLong(result);
+}
+
 PyObject *projectTracks(PyObject *self, PyObject *)
 {
     auto *api = projectApi(self);
@@ -875,6 +900,8 @@ PyMethodDef projectMethods[] = {
     {"remove_clip_mix", projectRemoveClipMix, METH_VARARGS, "Remove the mix of a clip."},
     {"undo", projectUndo, METH_NOARGS, "Undo the last operation on the project."},
     {"redo", projectRedo, METH_NOARGS, "Redo the last undone operation."},
+    {"zone", projectZone, METH_NOARGS, "The zone of the project, the in and out points of the timeline."},
+    {"set_zone", projectSetZone, METH_VARARGS, "Set the zone of the project, the in and out points of the timeline."},
     {"timeline_clips", projectTimelineClips, METH_VARARGS, "The clips of a track."},
     {"insert_clip", projectInsertClip, METH_VARARGS, "Insert a bin clip in the timeline, returns its id. The mode is normal, overwrite or insert."},
     {"remove_clip_at", projectRemoveClipAt, METH_VARARGS, "Remove the clip at a position of a track."},

@@ -760,6 +760,65 @@ bool KdenliveApi::redo()
     return true;
 }
 
+QVariantMap KdenliveApi::zone() const
+{
+    QVariantMap result;
+    if (!hasProject()) {
+        return result;
+    }
+    const QPoint zone = m_core->timelineZone();
+    result.insert(QStringLiteral("in"), zone.x());
+    result.insert(QStringLiteral("out"), zone.y());
+    return result;
+}
+
+bool KdenliveApi::setZone(int in, int out)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return false;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    const int duration = model->duration();
+    if (in < 0) {
+        setError(i18n("Invalid zone start: %1", in));
+        return false;
+    }
+    if (out < in) {
+        setError(i18n("The end of the zone (%1) is before its start (%2)", out, in));
+        return false;
+    }
+    if (duration > 0 && out >= duration) {
+        setError(i18n("The end of the zone (%1) is after the end of the project (%2)", out, duration - 1));
+        return false;
+    }
+    const QUuid uuid = model->uuid();
+    const QPoint oldZone = m_core->timelineZone();
+    const QPoint newZone(in, out);
+    applyZone(uuid, newZone);
+    // The zone is changed like any other operation, it can be undone
+    std::function<bool(void)> undo = [this, uuid, oldZone]() {
+        applyZone(uuid, oldZone);
+        return true;
+    };
+    std::function<bool(void)> redo = [this, uuid, newZone]() {
+        applyZone(uuid, newZone);
+        return true;
+    };
+    m_core->pushUndo(undo, redo, i18nc("@action", "Set zone"));
+    return true;
+}
+
+void KdenliveApi::applyZone(const QUuid &uuid, const QPoint &zone)
+{
+    // The zone is a property of the sequence, it is saved with the project
+    m_core->currentDoc()->setZone(uuid, zone.x(), zone.y());
+    // The interface holds the zone that is displayed and that it saves, it
+    // must follow
+    m_core->setTimelineZone(zone.x(), zone.y());
+}
+
 bool KdenliveApi::removeClipAt(int trackId, int position)
 {
     setError({});

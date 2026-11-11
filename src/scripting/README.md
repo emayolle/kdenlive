@@ -121,6 +121,8 @@ The clips of the bin are dictionaries with the following keys:
 | `track_duration(track_id)`          | The duration of a track, in frames                  |
 | `undo()`                            | Undo the last operation on the project              |
 | `redo()`                            | Redo the last undone operation                      |
+| `zone()`                            | The zone of the project, the in and out points      |
+| `set_zone(in, out)`                 | Set the zone of the project                         |
 | `save(path)`                        | Save the project                                    |
 
 The `insert_clip` mode is one of:
@@ -250,6 +252,32 @@ A marker that is added at the position of another one replaces it, it does not
 create a second marker. The comment and the category are optional, the
 category defaults to the one of the interface. A position that is negative or
 a category that does not exist is refused.
+
+## The zone of the project
+
+The zone is the part of the timeline that is kept, the interface calls it the
+trim zone and shows it with the *I* and *O* marks of the ruler. Nothing is cut,
+it is the range that the monitor and the render use.
+
+```python
+project.set_zone(100, 500)
+zone = project.zone()
+print(zone["in"], zone["out"])
+```
+
+The zone is a map with the following keys:
+
+| Key   | Type | Description                          |
+|-------|------|--------------------------------------|
+| `in`  | int  | The first frame of the zone          |
+| `out` | int  | The last frame of the zone           |
+
+The frames of the zone are included, `in` is the first frame and `out` the
+last one. A start that is negative, an end that is before the start and an end
+that is after the end of the project are refused.
+
+The zone is saved with the project and it can be undone like any other
+operation of the api.
 
 ## Undo and redo
 The operations of the api are added to the undo stack of the project, like

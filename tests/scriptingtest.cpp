@@ -386,6 +386,54 @@ TEST_CASE("Scripting api", "[Scripting]")
         REQUIRE(!api.lastError().isEmpty());
     }
 
+    SECTION("Set the zone of the project")
+    {
+        // A clip is needed, the duration of the project is the duration of its
+        // timeline
+        const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);
+        REQUIRE(trackId > -1);
+        api.setTrackActive(trackId, true);
+        REQUIRE(api.insertClip(binId, trackId, 0) > -1);
+
+        const int duration = api.projectDuration();
+        REQUIRE(duration == 100);
+
+        // The zone is the in and out point of the timeline
+        auto zone = api.zone();
+        REQUIRE(zone.contains(QStringLiteral("in")));
+        REQUIRE(zone.contains(QStringLiteral("out")));
+
+        REQUIRE(api.setZone(10, 99));
+        REQUIRE(api.lastError().isEmpty());
+        zone = api.zone();
+        REQUIRE(zone.value(QStringLiteral("in")).toInt() == 10);
+        REQUIRE(zone.value(QStringLiteral("out")).toInt() == 99);
+
+        // The zone can be undone like any other operation
+        REQUIRE(api.undo());
+        zone = api.zone();
+        REQUIRE(zone.value(QStringLiteral("in")).toInt() != 10);
+
+        REQUIRE(api.redo());
+        zone = api.zone();
+        REQUIRE(zone.value(QStringLiteral("in")).toInt() == 10);
+        REQUIRE(zone.value(QStringLiteral("out")).toInt() == 99);
+
+        // A zone that starts before the beginning of the project is refused
+        REQUIRE(api.setZone(-1, 50) == false);
+        REQUIRE(!api.lastError().isEmpty());
+
+        // A zone that ends before it starts is refused
+        REQUIRE(api.setZone(50, 10) == false);
+        REQUIRE(!api.lastError().isEmpty());
+
+        // A zone that ends after the project is refused
+        REQUIRE(api.setZone(0, duration) == false);
+        REQUIRE(!api.lastError().isEmpty());
+        REQUIRE(api.setZone(0, duration * 2) == false);
+        REQUIRE(!api.lastError().isEmpty());
+    }
+
     SECTION("Undo the operations")
     {
         const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);

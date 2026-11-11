@@ -7,8 +7,10 @@
 #pragma once
 
 #include <QObject>
+#include <QPoint>
 #include <QString>
 #include <QStringList>
+#include <QUuid>
 #include <QVariantList>
 #include <QVariantMap>
 
@@ -320,6 +322,28 @@ public:
     /** @brief Redoes the last undone operation. */
     bool redo();
 
+    /**
+     * @brief The zone of the project, the in and out points of the timeline.
+     *
+     * The zone is the part of the timeline that is kept, the interface calls
+     * it the trim zone. It is saved with the project.
+     *
+     * @return A map with the keys in and out, the frame numbers. (-1, -1) when
+     * the project has no zone.
+     */
+    QVariantMap zone() const;
+    /**
+     * @brief Sets the zone of the project, the in and out points.
+     *
+     * The frames of the zone are included, in is the first frame and out the
+     * last one.
+     *
+     * @param in The first frame of the zone.
+     * @param out The last frame of the zone.
+     * @return true when the zone was set.
+     */
+    bool setZone(int in, int out);
+
     /** @brief The duration of a track, in frames. */
     int trackDuration(int trackId) const;
     /** @brief The playhead position, in frames. */
@@ -345,6 +369,8 @@ public:
 
 private:
     void setError(const QString &message);
+    /** @brief Sets the zone of the sequence, without pushing an undo command. */
+    void applyZone(const QUuid &uuid, const QPoint &zone);
 
     Core *m_core;
     QString m_lastError;

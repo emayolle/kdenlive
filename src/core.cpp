@@ -873,6 +873,53 @@ MainWindow *Core::window()
     return m_mainWindow;
 }
 
+QPoint Core::timelineZone() const
+{
+    if (m_mainWindow && m_projectManager) {
+        const auto model = m_projectManager->getTimeline();
+        if (model) {
+            if (TimelineWidget *w = m_mainWindow->getTimeline(model->uuid())) {
+                // The interface holds the zone that is displayed
+                return QPoint(w->controller()->zoneIn(), w->controller()->zoneOut());
+            }
+        }
+    }
+    if (m_projectManager) {
+        const auto model = m_projectManager->getTimeline();
+        if (model) {
+            // Without the interface, the zone is stored in the project
+            KdenliveDoc *doc = m_projectManager->current();
+            if (!doc) {
+                return QPoint(-1, -1);
+            }
+            const QUuid uuid = model->uuid();
+            const int in = doc->getSequenceProperty(uuid, QStringLiteral("zonein"), QStringLiteral("-1")).toInt();
+            const int out = doc->getSequenceProperty(uuid, QStringLiteral("zoneout"), QStringLiteral("-1")).toInt();
+            return QPoint(in, out);
+        }
+    }
+    return QPoint(-1, -1);
+}
+
+bool Core::setTimelineZone(int in, int out)
+{
+    if (!m_mainWindow || !m_projectManager) {
+        return false;
+    }
+    const auto model = m_projectManager->getTimeline();
+    if (!model) {
+        return false;
+    }
+    TimelineWidget *w = m_mainWindow->getTimeline(model->uuid());
+    if (!w) {
+        return false;
+    }
+    // The undo is pushed by the caller, the controller must not push one of
+    // its own
+    w->controller()->setZone(QPoint(in, out), false);
+    return true;
+}
+
 ProjectManager *Core::projectManager()
 {
     return m_projectManager;

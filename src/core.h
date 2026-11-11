@@ -137,6 +137,24 @@ public:
     ProjectManager *projectManager();
     /** @brief Returns a pointer to the current project. */
     KdenliveDoc *currentDoc();
+
+    /**
+     * @brief The zone of the current timeline, the in and out points.
+     *
+     * When the interface is running, the zone it displays is the one that is
+     * returned. Without the interface, the zone stored in the project is
+     * returned. (-1, -1) means that there is no zone.
+     */
+    QPoint timelineZone() const;
+    /**
+     * @brief Sets the zone of the current timeline.
+     *
+     * The interface is updated when it is running, it is the one that holds
+     * the zone that is displayed and that is saved with the project.
+     *
+     * @return true when the interface was updated, false when it is not running.
+     */
+    bool setTimelineZone(int in, int out);
     /** @brief Returns project's timecode. */
     Timecode timecode() const;
     /** @brief Returns a pointer to the monitor manager. */
