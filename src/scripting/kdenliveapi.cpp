@@ -7,6 +7,7 @@
 #include "kdenliveapi.h"
 
 #include "bin/clipcreator.hpp"
+#include "bin/model/markerlistmodel.hpp"
 #include "bin/projectclip.h"
 #include "bin/projectfolder.h"
 #include "bin/projectitemmodel.h"
@@ -20,6 +21,7 @@
 #include "timeline2/model/timelinefunctions.hpp"
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "timeline2/model/trackmodel.hpp"
+#include "utils/gentime.h"
 
 #include <KLocalizedString>
 
@@ -644,6 +646,86 @@ bool KdenliveApi::setTrackName(int trackId, const QString &name)
     }
     model->setTrackName(trackId, name);
     return true;
+}
+
+bool KdenliveApi::addMarker(int position, const QString &comment, int type)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return false;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    const auto guideModel = model->getGuideModel();
+    if (!guideModel) {
+        setError(i18n("The timeline has no marker model"));
+        return false;
+    }
+    if (position < 0) {
+        setError(i18n("Invalid marker position: %1", position));
+        return false;
+    }
+    // The marker model asserts that the category exists, a script must not
+    // crash the application
+    if (type != -1 && !m_core->markerTypes.contains(type)) {
+        setError(i18n("No such marker category: %1", type));
+        return false;
+    }
+    // The position is given in frames of the project
+    const GenTime time(position, m_core->getCurrentFps());
+    if (!guideModel->addMarker(time, comment, type)) {
+        setError(i18n("Could not add a marker at frame %1", position));
+        return false;
+    }
+    return true;
+}
+
+bool KdenliveApi::removeMarker(int position)
+{
+    setError({});
+    if (!hasProject()) {
+        setError(i18n("No project loaded"));
+        return false;
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    const auto guideModel = model->getGuideModel();
+    if (!guideModel) {
+        setError(i18n("The timeline has no marker model"));
+        return false;
+    }
+    if (position < 0) {
+        setError(i18n("Invalid marker position: %1", position));
+        return false;
+    }
+    const GenTime time(position, m_core->getCurrentFps());
+    if (!guideModel->removeMarker(time)) {
+        setError(i18n("No marker at frame %1", position));
+        return false;
+    }
+    return true;
+}
+
+QVariantList KdenliveApi::markers() const
+{
+    if (!hasProject()) {
+        return {};
+    }
+    const auto model = m_core->projectManager()->getTimeline();
+    const auto guideModel = model->getGuideModel();
+    if (!guideModel) {
+        return {};
+    }
+    const double fps = m_core->getCurrentFps();
+    QVariantList result;
+    const auto allMarkers = guideModel->getAllMarkers();
+    for (const auto &marker : allMarkers) {
+        QVariantMap map;
+        map.insert(QStringLiteral("position"), marker.time().frames(fps));
+        map.insert(QStringLiteral("comment"), marker.comment());
+        map.insert(QStringLiteral("type"), marker.markerType());
+        result.append(map);
+    }
+    return result;
 }
 
 bool KdenliveApi::undo()

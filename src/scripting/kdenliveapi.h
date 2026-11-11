@@ -287,6 +287,34 @@ public:
      */
     bool setTrackName(int trackId, const QString &name);
 
+    /**
+     * @brief Adds a marker to the timeline.
+     *
+     * A marker is a point of the timeline with a comment, the interface calls
+     * them guides. They are saved with the project.
+     *
+     * @param position The position of the marker, in frames.
+     * @param comment The text of the marker.
+     * @param type The category of the marker, -1 for the default one.
+     * @return true if the marker was added.
+     */
+    bool addMarker(int position, const QString &comment = {}, int type = -1);
+    /**
+     * @brief Removes the marker at the given position.
+     *
+     * @param position The position of the marker, in frames.
+     * @return true if a marker was there and was removed.
+     */
+    bool removeMarker(int position);
+    /**
+     * @brief The markers of the timeline.
+     *
+     * Each marker is a map with the keys position, comment and type.
+     *
+     * @return The markers, ordered by position.
+     */
+    QVariantList markers() const;
+
     /** @brief Undoes the last operation on the project. */
     bool undo();
     /** @brief Redoes the last undone operation. */

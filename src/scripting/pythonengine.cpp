@@ -554,6 +554,47 @@ PyObject *projectRemoveClipMix(PyObject *self, PyObject *args)
     return PyBool_FromLong(result);
 }
 
+PyObject *projectAddMarker(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int position = -1;
+    const char *comment = nullptr;
+    int type = -1;
+    if (!PyArg_ParseTuple(args, "i|si", &position, &comment, &type)) {
+        return nullptr;
+    }
+    const bool result = api->addMarker(position, QString::fromUtf8(comment ? comment : ""), type);
+    PyErr_Clear();
+    return PyBool_FromLong(result);
+}
+
+PyObject *projectRemoveMarker(PyObject *self, PyObject *args)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    int position = -1;
+    if (!PyArg_ParseTuple(args, "i", &position)) {
+        return nullptr;
+    }
+    const bool result = api->removeMarker(position);
+    PyErr_Clear();
+    return PyBool_FromLong(result);
+}
+
+PyObject *projectMarkers(PyObject *self, PyObject *)
+{
+    auto *api = projectApi(self);
+    if (!api) {
+        return nullptr;
+    }
+    return fromVariantList(api->markers());
+}
+
 PyObject *projectUndo(PyObject *self, PyObject *)
 {
     auto *api = projectApi(self);
@@ -822,6 +863,9 @@ PyMethodDef projectMethods[] = {
     {"set_track_active", projectSetTrackActive, METH_VARARGS, "Make a track the active one, only the active tracks receive the timeline operations."},
     {"is_track_active", projectIsTrackActive, METH_VARARGS, "Tell whether a track is the active one."},
     {"set_track_name", projectSetTrackName, METH_VARARGS, "Rename a track."},
+    {"add_marker", projectAddMarker, METH_VARARGS, "Add a marker to the timeline. The comment and the category of the marker are optional."},
+    {"remove_marker", projectRemoveMarker, METH_VARARGS, "Remove the marker at a position of the timeline."},
+    {"markers", projectMarkers, METH_NOARGS, "The markers of the timeline."},
     {"move_clip", projectMoveClip, METH_VARARGS, "Move a clip of the timeline to a track and a position."},
     {"group_clips", projectGroupClips, METH_VARARGS, "Group clips together, takes a list of clip ids and returns the group id."},
     {"ungroup_clips", projectUngroupClips, METH_VARARGS, "Remove clips from their group, takes a list of clip ids."},

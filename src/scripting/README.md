@@ -115,6 +115,9 @@ The clips of the bin are dictionaries with the following keys:
 | `add_effect(clip_id, effect_id)`    | Add an effect to a clip                              |
 | `remove_effect(clip_id, effect_id)` | Remove an effect of a clip                          |
 | `clip_effects(clip_id)`             | The effects of a clip                                |
+| `add_marker(position, comment, type)` | Add a marker to the timeline                      |
+| `remove_marker(position)`          | Remove the marker at a position                      |
+| `markers()`                         | The markers of the timeline                          |
 | `track_duration(track_id)`          | The duration of a track, in frames                  |
 | `undo()`                            | Undo the last operation on the project              |
 | `redo()`                            | Redo the last undone operation                      |
@@ -221,6 +224,32 @@ for effect in project.clip_effects(clip_id):
 | `is_builtin` | bool   | True for the fades that Kdenlive adds itself   |
 
 An effect that does not exist is refused.
+
+### Markers
+
+A marker is a point of the timeline with a comment, the interface calls them
+guides. They are saved with the project.
+
+```python
+project.add_marker(100, "The interview starts here")
+project.remove_marker(100)
+for marker in project.markers():
+    print(marker["position"], marker["comment"])
+```
+
+The markers are dictionaries with the following keys, they are sorted by
+position:
+
+| Key        | Type   | Description                                |
+|------------|--------|--------------------------------------------|
+| `position` | int    | The position of the marker, in frames      |
+| `comment`  | string | The text of the marker                     |
+| `type`     | int    | The category of the marker, 0 by default   |
+
+A marker that is added at the position of another one replaces it, it does not
+create a second marker. The comment and the category are optional, the
+category defaults to the one of the interface. A position that is negative or
+a category that does not exist is refused.
 
 ## Undo and redo
 The operations of the api are added to the undo stack of the project, like

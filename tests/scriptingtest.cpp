@@ -342,6 +342,50 @@ TEST_CASE("Scripting api", "[Scripting]")
         REQUIRE(!api.lastError().isEmpty());
     }
 
+    SECTION("Add and remove a marker")
+    {
+        REQUIRE(api.markers().isEmpty());
+
+        // A marker is a point of the timeline with a comment
+        REQUIRE(api.addMarker(100, QStringLiteral("First marker")));
+        REQUIRE(api.lastError().isEmpty());
+
+        auto markers = api.markers();
+        REQUIRE(markers.size() == 1);
+        auto first = markers.first().toMap();
+        REQUIRE(first.value(QStringLiteral("position")).toInt() == 100);
+        REQUIRE(first.value(QStringLiteral("comment")).toString() == QStringLiteral("First marker"));
+
+        // A second marker, at another position
+        REQUIRE(api.addMarker(50, QStringLiteral("Second marker")));
+        markers = api.markers();
+        REQUIRE(markers.size() == 2);
+        // The markers are sorted by position
+        REQUIRE(markers.first().toMap().value(QStringLiteral("position")).toInt() == 50);
+
+        // A marker at the same position is replaced, not duplicated
+        REQUIRE(api.addMarker(100, QStringLiteral("Renamed")));
+        REQUIRE(api.markers().size() == 2);
+
+        // The marker can be removed
+        REQUIRE(api.removeMarker(100));
+        markers = api.markers();
+        REQUIRE(markers.size() == 1);
+        REQUIRE(markers.first().toMap().value(QStringLiteral("position")).toInt() == 50);
+
+        // There is no marker there anymore
+        REQUIRE(api.removeMarker(100) == false);
+        REQUIRE(!api.lastError().isEmpty());
+
+        // An invalid position is refused
+        REQUIRE(api.addMarker(-1, QStringLiteral("Nope")) == false);
+        REQUIRE(!api.lastError().isEmpty());
+
+        // An unknown category is refused, it would crash the marker model
+        REQUIRE(api.addMarker(10, QStringLiteral("Nope"), 9999) == false);
+        REQUIRE(!api.lastError().isEmpty());
+    }
+
     SECTION("Undo the operations")
     {
         const int trackId = api.addTrack(QStringLiteral("Scripting track"), false);
