@@ -88,6 +88,13 @@ public:
     QString script() const;
     /** @brief Gives the keyboard focus to the text editor. */
     void focusEditor();
+    /**
+     * @brief The text widget of the editor.
+     *
+     * It is the widget of Kate that holds the text and that handles the keys,
+     * it is not the view.
+     */
+    QWidget *textWidget() const;
 
     /**
      * @brief Takes the shortcuts of the window away from the editor.
@@ -128,8 +135,6 @@ private:
     QWidget *m_textWidget{nullptr};
     QPlainTextEdit *m_console{nullptr};
     QPushButton *m_runButton{nullptr};
-    /** @brief True when the editor has the focus, for the log. */
-    bool m_lastFocusInEditor{false};
     /** @brief The shortcuts of the window, they are taken away from the editor. */
     QList<QPair<QPointer<QAction>, QKeySequence>> m_savedShortcuts;
     QList<QShortcut *> m_disabledShortcuts;

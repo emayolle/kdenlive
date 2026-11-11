@@ -43,6 +43,8 @@ TEST_CASE("Script editor", "[Scripting]")
     auto *view = editor.findChild<KTextEditor::View *>();
     REQUIRE(view != nullptr);
     REQUIRE(ScriptEditorInternal::textWidgetOf(view) != nullptr);
+    // The editor knows its text widget, it is the one that handles the keys
+    REQUIRE(editor.textWidget() == ScriptEditorInternal::textWidgetOf(view));
 }
 
 TEST_CASE("Script editor shortcuts", "[Scripting]")

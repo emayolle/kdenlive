@@ -17,17 +17,14 @@
 #include <KLocalizedString>
 #include <KXmlGuiWindow>
 #include <QApplication>
-#include <QCoreApplication>
 #include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QKeyEvent>
-#include <QLabel>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QShortcut>
 #include <QSplitter>
-#include <QTextEdit>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -163,7 +160,7 @@ ScriptEditor::ScriptEditor(QWidget *parent)
         m_view->setStatusBarEnabled(false);
         splitter->addWidget(m_view);
         // The text widget of the editor is the one that handles the keys
-        m_textWidget = m_textWidget;
+        m_textWidget = ScriptEditorInternal::textWidgetOf(m_view);
     }
 
     m_console = new QPlainTextEdit(splitter);
@@ -175,13 +172,6 @@ ScriptEditor::ScriptEditor(QWidget *parent)
     splitter->setStretchFactor(1, 1);
 
     layout->addWidget(splitter);
-
-    // The version of the binary that runs, it is useful to know which build is
-    // used when something does not work
-    auto *version = new QLabel(QCoreApplication::applicationFilePath(), this);
-    version->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    version->setStyleSheet(QStringLiteral("color: palette(mid); font-size: 8pt;"));
-    layout->addWidget(version);
 
     connect(m_runButton, &QPushButton::clicked, this, &ScriptEditor::runScript);
 
@@ -294,12 +284,6 @@ bool ScriptEditor::eventFilter(QObject *watched, QEvent *event)
         const bool inEditor = textWidget->hasFocus() || (QApplication::focusWidget() == textWidget);
         if (event->type() == QEvent::FocusIn || event->type() == QEvent::FocusOut) {
             updateWindowShortcuts(inEditor);
-            if (inEditor != m_lastFocusInEditor) {
-                m_lastFocusInEditor = inEditor;
-                appendOutput(QStringLiteral("[focus] %1 -> %2")
-                                 .arg(inEditor ? i18n("in the editor") : i18n("outside"))
-                                 .arg(QApplication::focusWidget() ? QApplication::focusWidget()->metaObject()->className() : i18n("none")));
-            }
         }
         if (event->type() == QEvent::ShortcutOverride && inEditor) {
             const auto *keyEvent = static_cast<QKeyEvent *>(event);
@@ -308,8 +292,6 @@ bool ScriptEditor::eventFilter(QObject *watched, QEvent *event)
                 // The editor has an action for this key, it must be
                 // triggered. The event is ignored so that the shortcut
                 // system looks for an action.
-                appendOutput(
-                    QStringLiteral("[key] %1 : the editor handles it").arg(QKeySequence(keyEvent->keyCombination()).toString(QKeySequence::NativeText)));
                 event->ignore();
                 return true;
             case ScriptEditorInternal::ShortcutHandling::Accept:
@@ -335,6 +317,11 @@ void ScriptEditor::setScript(const QString &code)
     if (m_document) {
         m_document->setText(code);
     }
+}
+
+QWidget *ScriptEditor::textWidget() const
+{
+    return m_textWidget;
 }
 
 void ScriptEditor::focusEditor()
