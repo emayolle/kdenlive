@@ -134,6 +134,7 @@ public:
         StatusRole,        /// clip only
         TypeRole,          /// clip only
         KeyframesRole,
+        KeyframesListRole,
         DurationRole,
         FinalMoveRole,
         MaxDurationRole,

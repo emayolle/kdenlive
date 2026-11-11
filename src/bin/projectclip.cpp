@@ -274,8 +274,8 @@ void ProjectClip::updateAudioThumbnail(bool cachedThumb)
     if (m_clipType == ClipType::Audio) {
         QImage thumb = ThumbnailCache::get()->getThumbnail(m_binId, 0);
         if (thumb.isNull() && !pCore->taskManager.hasPendingJob(ObjectId(KdenliveObjectType::BinClip, m_binId.toInt(), QUuid()), AbstractTask::AUDIOTHUMBJOB)) {
-            const auto height = int(QFontInfo(qApp->font()).pixelSize() * 8);
-            const auto width = int(height * pCore->getCurrentDar());
+            const int height(pCore->thumbProfile().height());
+            const int width = qRound(height * (pCore->thumbProfile().dar()));
             QImage img(width, height, QImage::Format_ARGB32);
             int i = 0;
             const QMap<int, QString> streams = audioInfo()->streams();
@@ -1503,10 +1503,23 @@ std::shared_ptr<Mlt::Producer> ProjectClip::cloneProducer(bool removeEffects, bo
         int ct = 0;
         Mlt::Filter *filter = prod->filter(ct);
         while (filter) {
-            qDebug() << "// EFFECT " << ct << " : " << filter->get("mlt_service");
-            QString ix = QString::fromLatin1(filter->get("kdenlive_id"));
-            if (!ix.isEmpty()) {
-                qDebug() << "/ + + DELETING";
+            if (filter->property_exists("kdenlive_id") || filter->property_exists("internal_added")) {
+                if (prod->detach(*filter) == 0) {
+                } else {
+                    ct++;
+                }
+            } else {
+                ct++;
+            }
+            delete filter;
+            filter = prod->filter(ct);
+        }
+    } else {
+        // Remove internal effects only
+        int ct = 0;
+        Mlt::Filter *filter = prod->filter(ct);
+        while (filter) {
+            if (filter->property_exists("internal_added")) {
                 if (prod->detach(*filter) == 0) {
                 } else {
                     ct++;

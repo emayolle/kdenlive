@@ -41,6 +41,10 @@ QPair<bool, QString> DocumentValidator::validate(const double currentVersion, co
 {
     Q_EMIT pCore->loadingMessageNewStage(i18n("Validating project…"), 0);
     QDomElement mlt = m_doc.firstChildElement(QStringLiteral("mlt"));
+    if (mlt.isNull()) {
+        mlt = m_doc.firstChildElement(QStringLiteral("westley"));
+    }
+
     // At least the root element must be there
     if (mlt.isNull()) {
         return QPair<bool, QString>(false, QString());
@@ -248,6 +252,7 @@ bool DocumentValidator::upgrade(double version, int patchVersion, const double c
         QDomNode tractor = m_doc.elementsByTagName(QStringLiteral("tractor")).at(0);
         QDomNode multitrack = m_doc.elementsByTagName(QStringLiteral("multitrack")).at(0);
         QDomNodeList playlists = m_doc.elementsByTagName(QStringLiteral("playlist"));
+        QDomNodeList transitions = m_doc.elementsByTagName(QStringLiteral("transition"));
 
         QDomNode props = m_doc.elementsByTagName(QStringLiteral("properties")).at(0).toElement();
         QString profile = props.toElement().attribute(QStringLiteral("videoprofile"));
@@ -285,7 +290,9 @@ bool DocumentValidator::upgrade(double version, int patchVersion, const double c
                     blank_track.setAttribute(QStringLiteral("hide"), QStringLiteral("video"));
                 }
             }
-        } else
+        } else {
+            QMap<int, int> updatedTrackOrder;
+            int playlistPosition = 0;
             for (int i = 0; i < max; ++i) {
                 QDomNode n = playlists.at(i);
                 westley.insertBefore(n, QDomNode());
@@ -299,16 +306,24 @@ bool DocumentValidator::upgrade(double version, int patchVersion, const double c
                 if (playlist_id.isEmpty()) {
                     playlist_id = QStringLiteral("black_track");
                     pl.setAttribute(QStringLiteral("id"), playlist_id);
+                } else {
+                    bool ok = false;
+                    if (playlist_id.length() > 8) {
+                        QString tmp = playlist_id;
+                        playlistPosition = tmp.remove(0, 8).toInt(&ok) + 1;
+                    }
+                    if (!ok) {
+                        qDebug() << "::: Unexpected playlist id: " << playlist_id;
+                        playlistPosition++;
+                        const QList<int> existingPositions = updatedTrackOrder.values();
+                        while (existingPositions.contains(playlistPosition)) {
+                            playlistPosition++;
+                        }
+                    }
                 }
+                updatedTrackOrder.insert(i, playlistPosition);
                 track.setAttribute(QStringLiteral("producer"), playlist_id);
-// tractor.appendChild(track);
-#define KEEP_TRACK_ORDER 1
-#ifdef KEEP_TRACK_ORDER
-                tractor.insertAfter(track, QDomNode());
-#else
-                // Insert the new track in an order that hopefully matches the 3 video, then 2 audio tracks of Kdenlive 0.7.0
-                // insertion sort - O( tracks*tracks )
-                // Note, this breaks _all_ transitions - but you can move them up and down afterwards.
+                // Insert the new track in an order that matches the 3 video, then 2 audio tracks of Kdenlive 0.7.0
                 QDomElement tractor_elem = tractor.toElement();
                 if (!tractor_elem.isNull()) {
                     QDomNodeList tracks = tractor_elem.elementsByTagName("track");
@@ -317,14 +332,19 @@ bool DocumentValidator::upgrade(double version, int patchVersion, const double c
                         tractor.insertAfter(track, QDomNode());
                     } else {
                         bool inserted = false;
-                        for (int i = 0; i < size; ++i) {
-                            QDomElement track_elem = tracks.at(i).toElement();
+                        for (int j = 0; j < size; ++j) {
+                            QDomElement track_elem = tracks.at(j).toElement();
                             if (track_elem.isNull()) {
                                 tractor.insertAfter(track, QDomNode());
                                 inserted = true;
                                 break;
                             } else {
-                                if (playlist_id < track_elem.attribute("producer")) {
+                                QString currentPlaylistId = track_elem.attribute("producer");
+                                int currentPlaylistIndex = 0;
+                                if (currentPlaylistId.startsWith(QLatin1String("playlist"))) {
+                                    currentPlaylistIndex = currentPlaylistId.remove(0, 8).toInt() + 1;
+                                }
+                                if (playlistPosition < currentPlaylistIndex) {
                                     tractor.insertBefore(track, track_elem);
                                     inserted = true;
                                     break;
@@ -340,12 +360,31 @@ bool DocumentValidator::upgrade(double version, int patchVersion, const double c
                     qCWarning(KDENLIVE_LOG) << "tractor was not a QDomElement";
                     tractor.insertAfter(track, QDomNode());
                 }
-#endif
             }
+            // Now fix transitions tracks
+            for (int i = 0; i < transitions.count(); ++i) {
+                QDomElement tr = transitions.at(i).toElement();
+                if (tr.hasAttribute(QStringLiteral("a_track"))) {
+                    int a_track = tr.attribute(QStringLiteral("a_track")).toInt();
+                    if (updatedTrackOrder.contains(a_track)) {
+                        tr.setAttribute(QStringLiteral("a_track"), updatedTrackOrder.value(a_track));
+                    } else {
+                        qCWarning(KDENLIVE_LOG) << "Unexpected transition a_track: " << a_track << ", Current map: " << updatedTrackOrder;
+                    }
+                }
+                if (tr.hasAttribute(QStringLiteral("b_track"))) {
+                    int b_track = tr.attribute(QStringLiteral("b_track")).toInt();
+                    if (updatedTrackOrder.contains(b_track)) {
+                        tr.setAttribute(QStringLiteral("b_track"), updatedTrackOrder.value(b_track));
+                    } else {
+                        qCWarning(KDENLIVE_LOG) << "Unexpected transition b_track: " << b_track << ", Current map: " << updatedTrackOrder;
+                    }
+                }
+            }
+        }
         tractor.removeChild(multitrack);
 
         // audio track mixing transitions should not be added to track view, so add required attribute
-        QDomNodeList transitions = m_doc.elementsByTagName(QStringLiteral("transition"));
         max = transitions.count();
         for (int i = 0; i < max; ++i) {
             QDomElement tr = transitions.at(i).toElement();
@@ -573,8 +612,25 @@ bool DocumentValidator::upgrade(double version, int patchVersion, const double c
                     if (!wproducer.attribute(QStringLiteral("description")).isEmpty()) {
                         kproducer.setAttribute(QStringLiteral("description"), wproducer.attribute(QStringLiteral("description")));
                     }
-                    kproducer.setAttribute(QStringLiteral("resource"), wproducer.attribute(QStringLiteral("resource")));
+                    const QString resource = wproducer.attribute(QStringLiteral("resource"));
+                    kproducer.setAttribute(QStringLiteral("resource"), resource);
+                    if (!resource.isEmpty()) {
+                        Xml::setXmlProperty(wproducer, QStringLiteral("resource"), resource);
+                    }
+                    const QString length = wproducer.attribute(QStringLiteral("duration"));
+                    if (!length.isEmpty()) {
+                        Xml::setXmlProperty(wproducer, QStringLiteral("length"), length);
+                    }
                     kproducer.setAttribute(QStringLiteral("type"), wproducer.attribute(QStringLiteral("type")));
+                    bool ok;
+                    int type = wproducer.attribute(QStringLiteral("type")).toInt(&ok);
+                    if (ok) {
+                        if (type == ClipType::AV || type == ClipType::Audio || type == ClipType::Video) {
+                            Xml::setXmlProperty(wproducer, QStringLiteral("mlt_service"), QStringLiteral("avformat"));
+                        } else if (type == ClipType::Image) {
+                            Xml::setXmlProperty(wproducer, QStringLiteral("mlt_service"), QStringLiteral("qimage"));
+                        }
+                    }
                     // Testing fix for 358
                     if (!wproducer.attribute(QStringLiteral("aspect_ratio")).isEmpty()) {
                         kproducer.setAttribute(QStringLiteral("aspect_ratio"), wproducer.attribute(QStringLiteral("aspect_ratio")));
@@ -655,7 +711,7 @@ bool DocumentValidator::upgrade(double version, int patchVersion, const double c
             if (avfile.isNull()) {
                 qCWarning(KDENLIVE_LOG) << "found an <avfile /> that is not a QDomElement";
             } else {
-                QString id = avfile.attribute(QStringLiteral("id"));
+                const QString id = avfile.attribute(QStringLiteral("id"));
                 // this is horrible, must be rewritten, it's just for test
                 for (int j = 0; j < kproducers.count(); ++j) {
                     if (kproducers.at(j).toElement().attribute(QStringLiteral("id")) == id) {
@@ -892,38 +948,20 @@ bool DocumentValidator::upgrade(double version, int patchVersion, const double c
                 mlt.insertBefore(pr, firstProd);
             }
         }
-        // TODO MLT7: port?
-        /*int profileWidth;
-        int profileHeight;
-        if (profile.isNull()) {
-            // could not find profile info, set PAL
-            profileWidth = 720;
-            profileHeight = 576;
-        } else {
-            profileWidth = profile.attribute(QStringLiteral("width")).toInt();
-            profileHeight = profile.attribute(QStringLiteral("height")).toInt();
-        }
+
+        // Audio tracks were above video tracks at that time, move them below
+
+        // Composite transitions need a geometry parameter otherwise they are created with opacity = 0
         QDomNodeList transitions = m_doc.elementsByTagName(QStringLiteral("transition"));
         max = transitions.count();
         for (int i = 0; i < max; ++i) {
-
             QDomElement trans = transitions.at(i).toElement();
-            int out = trans.attribute(QStringLiteral("out")).toInt() - trans.attribute(QStringLiteral("in")).toInt();
-            QString geom = Xml::getXmlProperty(trans, QStringLiteral("geometry"));
-            Mlt::Geometry *g = new Mlt::Geometry(geom.toUtf8().data(), out, profileWidth, profileHeight);
-            Mlt::GeometryItem item;
-            if (g->next_key(&item, out) == 0) {
-                // We have a keyframe just after last frame, try to move it to last frame
-                if (item.frame() == out + 1) {
-                    item.frame(out);
-                    g->insert(item);
-                    g->remove(out + 1);
-                    Xml::setXmlProperty(trans, QStringLiteral("geometry"), QString::fromLatin1(g->serialise()));
+            if (trans.attribute(QStringLiteral("mlt_service")) == QLatin1String("composite")) {
+                if (!trans.hasAttribute(QStringLiteral("geometry"))) {
+                    trans.setAttribute(QStringLiteral("geometry"), QStringLiteral("0 0 100% 100% 1"));
                 }
             }
-            delete g;
-
-        }*/
+        }
     }
 
     if (version <= 0.87) {
@@ -2529,7 +2567,7 @@ QString DocumentValidator::colorToString(const QColor &c)
 
 bool DocumentValidator::isProject() const
 {
-    return m_doc.documentElement().tagName() == QLatin1String("mlt");
+    return m_doc.documentElement().tagName() == QLatin1String("mlt") || m_doc.documentElement().tagName() == QLatin1String("westley");
 }
 
 bool DocumentValidator::isModified() const

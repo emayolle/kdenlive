@@ -27,6 +27,7 @@
 #include <QMouseEvent>
 #include <QStack>
 #include <QStyle>
+#include <QTimer>
 #include <QWheelEvent>
 
 namespace {
@@ -288,6 +289,8 @@ MySpinBox::MySpinBox(QWidget *parent)
 
 QValidator::State MySpinBox::validate(QString &text, int &pos) const
 {
+    Q_UNUSED(pos);
+
     if (m_cachedText == text && !text.isEmpty()) return m_cachedState;
 
     QValidator::State state;
@@ -418,9 +421,10 @@ bool MySpinBox::eventFilter(QObject *watched, QEvent *event)
                 m_dragging = false;
                 event->accept();
                 return true;
-            } else {
+            } else if (!m_editing) {
                 m_editing = true;
                 lineEdit()->setFocus(Qt::MouseFocusReason);
+                QTimer::singleShot(0, this, [this]{ lineEdit()->selectAll(); });
             }
         }
         if (type == QEvent::Enter) {
@@ -450,6 +454,8 @@ MyDoubleSpinBox::MyDoubleSpinBox(QWidget *parent)
 
 QValidator::State MyDoubleSpinBox::validate(QString &text, int &pos) const
 {
+    Q_UNUSED(pos);
+
     if (m_cachedText == text && !text.isEmpty()) return m_cachedState;
 
     QValidator::State state;
@@ -581,6 +587,7 @@ bool MyDoubleSpinBox::eventFilter(QObject *watched, QEvent *event)
             } else if (!m_editing) {
                 m_editing = true;
                 lineEdit()->setFocus(Qt::MouseFocusReason);
+                QTimer::singleShot(0, this, [this]{ lineEdit()->selectAll(); });
             }
         }
         if (type == QEvent::Enter) {

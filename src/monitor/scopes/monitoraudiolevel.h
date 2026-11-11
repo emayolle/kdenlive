@@ -20,6 +20,7 @@ public:
     ~MonitorAudioLevel() override;
     void refreshPixmap();
     int audioChannels;
+    std::list<int> audioTrackIds{-1};
     bool isValid;
     void setVisibility(bool enable);
     QSize sizeHint() const override;
@@ -27,6 +28,7 @@ public:
 private:
     std::unique_ptr<AudioLevelWidget> m_audioLevelWidget;
     void refreshScope(const QSize &size, bool full) override;
+    double audioLevelDbFromLinear(double dbValue);
 
 public Q_SLOTS:
     void setAudioValues(const QVector<double> &values);

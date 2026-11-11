@@ -177,6 +177,11 @@ KeyframeContainer::KeyframeContainer(std::shared_ptr<AssetParameterModel> model,
 
     m_applyAction = new QAction(QIcon::fromTheme(QStringLiteral("edit-paste")), i18n("Apply current position value to selected keyframes"), parent);
 
+    QAction *setAsPreviousType = new QAction(i18n("Use Same Type As Previous Keyframe"), this);
+    setAsPreviousType->setCheckable(true);
+    setAsPreviousType->setChecked(KdenliveSettings::usepreviouskeyframeinterp());
+    connect(setAsPreviousType, &QAction::triggered, this, [](bool enable) { KdenliveSettings::setUsepreviouskeyframeinterp(enable); });
+
     // Keyframe type widget
     m_selectType = new KSelectAction(QIcon::fromTheme(QStringLiteral("linear")), i18n("Keyframe interpolation"), parent);
     QMap<KeyframeType::KeyframeEnum, QAction *> kfTypeHandles;
@@ -286,6 +291,7 @@ KeyframeContainer::KeyframeContainer(std::shared_ptr<AssetParameterModel> model,
     menuAction->addAction(paste);
     menuAction->addAction(m_applyAction);
     menuAction->addSeparator();
+    menuAction->addAction(setAsPreviousType);
     menuAction->addAction(kfType);
     menuAction->addAction(removeNext);
     menuAction->addAction(autoLimit);
@@ -748,7 +754,7 @@ void KeyframeContainer::addParameter(const QPersistentModelIndex &index)
         Q_EMIT addIndex(index);
         // qtblend uses an opacity value in the (0-1) range, while older geometry effects use (0-100)
         m_geom.reset(new GeometryWidget(pCore->getMonitor(m_model->monitorId), range, rect, true, opacity, m_sourceFrameSize, false,
-                                        m_model->data(m_index, AssetParameterModel::OpacityRole).toBool(), m_parent, m_layout));
+                                        m_model->data(index, AssetParameterModel::OpacityRole).toBool(), m_parent, m_layout));
         if (m_neededScene == SceneType::MonitorSceneRotatedGeometry) {
             m_geom->setRotatable(true);
         }
@@ -1124,6 +1130,10 @@ void KeyframeContainer::slotPasteKeyframeFromClipBoard()
 void KeyframeContainer::slotCopySelectedKeyframes()
 {
     const QVector<int> results = m_keyframeview->selectedKeyframesIndexes();
+    if (results.isEmpty()) {
+        slotCopyValueAtCursorPos();
+        return;
+    }
     QJsonDocument effectDoc = m_model->toJson(results, false);
     if (effectDoc.isEmpty()) {
         pCore->displayMessage(i18n("Cannot copy current parameter values"), InformationMessage);
@@ -1170,7 +1180,9 @@ void KeyframeContainer::slotImportKeyframes()
     connect(import, &KeyframeImport::updateQmlView, this, [this](QPersistentModelIndex ix, const QString animData) {
         auto kfModel = m_keyframes->getKeyModel(ix);
         if (kfModel) {
-            kfModel->parseAnimProperty(animData);
+            Fun undo = []() { return true; };
+            Fun redo = []() { return true; };
+            kfModel->parseAnimProperty(animData, -1, -1, undo, redo);
         }
     });
     import->updateView();

@@ -127,6 +127,7 @@ private:
     QModelIndex m_lastHoveredItem;
     QModelIndexList m_clickedIndexes;
     bool m_editing;
+    int m_resizeColumn{-1};
     bool isEditing() const;
 
 Q_SIGNALS:
@@ -188,8 +189,8 @@ namespace BinColumns {
 inline constexpr int Name = 0;
 inline constexpr int Date = 1;
 inline constexpr int Description = 2;
-inline constexpr int Rating = 3;
-inline constexpr int FPS = 4;
+inline constexpr int Rating = 7;
+inline constexpr int FPS = 9;
 } // namespace BinColumns
 
 /**
@@ -319,6 +320,8 @@ public:
     void emitRefreshPanel(const QString &id);
     /** @brief Returns true if there is a clip in bin. Timeline clips are ignored. */
     bool hasUserClip() const;
+    /** @brief Returns true if there is any another item in bin than main sequence. */
+    bool isEmpty() const;
     /** @brief Trigger reload of all clips. */
     void reloadAllProducers(bool reloadThumbs = true);
     /** @brief Ensure all audio thumbs have been created */
@@ -636,6 +639,7 @@ private:
     SmallJobLabel *m_infoLabel{nullptr};
     TagWidget *m_tagsWidget;
     QMenu *m_filterMenu{nullptr};
+    int m_minimumHeaderWidth{100};
     QActionGroup m_filterTagGroup;
     QActionGroup m_filterRateGroup;
     QActionGroup m_filterUsageGroup;
@@ -685,6 +689,8 @@ private:
     bool doPasteEffect(std::vector<QString> ids, const QStringList &effectData);
 
     QString generateDuplicateName(const QString &originalName, const QList<std::shared_ptr<AbstractProjectItem>> &existingItems);
+    /** @brief Ensure tree view first column is large enough. */
+    void adjustHeaderSize();
 
 Q_SIGNALS:
     void itemUpdated(std::shared_ptr<AbstractProjectItem>);

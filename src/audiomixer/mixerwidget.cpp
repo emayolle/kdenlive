@@ -44,43 +44,6 @@ std::list<int> &MixerWidget::getGainScaleValues()
     return gainValues;
 }
 
-void MixerWidget::property_changed(mlt_service, MixerWidget *widget, mlt_event_data data)
-{
-    if (widget && !strcmp(Mlt::EventData(data).to_string(), "_position")) {
-        mlt_properties filter_props = MLT_FILTER_PROPERTIES(widget->m_monitorFilter->get_filter());
-        int pos = mlt_properties_get_int(filter_props, "_position");
-        if (!widget->m_levels.contains(pos)) {
-            QVector<double> levels;
-            for (int i = 0; i < widget->m_channels; i++) {
-                // NOTE: this is an approximation. To get the real peak level, we need version 2 of audiolevel MLT filter, see property_changedV2
-                levels << log10(mlt_properties_get_double(filter_props, QStringLiteral("_audio_level.%1").arg(i).toUtf8().constData()) / 1.18) * 20;
-            }
-            widget->m_levels[pos] = std::move(levels);
-            if (widget->m_levels.size() > widget->m_maxLevels) {
-                widget->m_levels.erase(widget->m_levels.begin());
-            }
-        }
-    }
-}
-
-void MixerWidget::property_changedV2(mlt_service, MixerWidget *widget, mlt_event_data data)
-{
-    if (widget && !strcmp(Mlt::EventData(data).to_string(), "_position")) {
-        mlt_properties filter_props = MLT_FILTER_PROPERTIES(widget->m_monitorFilter->get_filter());
-        int pos = mlt_properties_get_int(filter_props, "_position");
-        if (!widget->m_levels.contains(pos)) {
-            QVector<double> levels;
-            for (int i = 0; i < widget->m_channels; i++) {
-                levels << mlt_properties_get_double(filter_props, QStringLiteral("_audio_level.%1").arg(i).toUtf8().constData());
-            }
-            widget->m_levels[pos] = std::move(levels);
-            if (widget->m_levels.size() > widget->m_maxLevels) {
-                widget->m_levels.erase(widget->m_levels.begin());
-            }
-        }
-    }
-}
-
 MixerWidget::MixerWidget(int tid, Mlt::Tractor *service, QString trackTag, const QString &trackName, MixerManager *parent)
     : QWidget(parent)
     , m_manager(parent)
@@ -290,15 +253,21 @@ void MixerWidget::setupFilters(Mlt::Tractor *service)
 {
     // Check if we already have built-in filters for this tractor
     int max = service->filter_count();
+    m_monitorFilter.reset();
+    m_levelFilter.reset();
+    m_balanceFilter.reset();
     for (int i = 0; i < max; i++) {
         std::shared_ptr<Mlt::Filter> fl(service->filter(i));
-        if (!fl->is_valid()) {
+        if (!fl->is_valid() || !fl->property_exists("internal_added")) {
             continue;
         }
         const QString filterService = fl->get("mlt_service");
         if (filterService == QLatin1String("audiolevel")) {
             m_monitorFilter = fl;
-            m_monitorFilter->set("disable", 0);
+            m_monitorFilter->clear("disable");
+            // Update track id
+            const QByteArray trackAudioKey = QStringLiteral("meta.audio.track.%1.audio_level.").arg(m_tid).toLatin1();
+            m_monitorFilter->set("prefix", trackAudioKey.constData());
         } else if (filterService == QLatin1String("volume")) {
             m_levelFilter = fl;
             double volume = m_levelFilter->get_double("level");
@@ -330,14 +299,13 @@ void MixerWidget::setupFilters(Mlt::Tractor *service)
         }
     }
     // Monitoring should be appended last so that other effects are reflected in audio monitor
-    if (m_monitorFilter == nullptr && m_tid != -1) {
+    if (m_monitorFilter == nullptr) {
         m_monitorFilter.reset(new Mlt::Filter(service->get_profile(), "audiolevel"));
         if (m_monitorFilter->is_valid()) {
             m_monitorFilter->set("iec_scale", 0);
             m_monitorFilter->set("internal_added", 237);
-            if (m_manager->audioLevelV2()) {
-                m_monitorFilter->set("dbpeak", 1);
-            }
+            const QByteArray trackAudioKey = QStringLiteral("meta.audio.track.%1.audio_level.").arg(m_tid).toLatin1();
+            m_monitorFilter->set("prefix", trackAudioKey.constData());
             service->attach(*m_monitorFilter.get());
         }
     }
@@ -404,11 +372,15 @@ void MixerWidget::setupConnections()
                     m_lastVolume = m_levelFilter->get_double("level");
                     m_levelFilter->set("kdenlive:muted_level", m_lastVolume);
                     m_levelFilter->set("level", -1000);
-                    m_levelFilter->set("disable", 0);
+                    m_levelFilter->clear("disable");
                 } else {
                     m_lastVolume = m_levelFilter->get_double("kdenlive:muted_level");
                     m_levelFilter->set("level", m_lastVolume);
-                    m_levelFilter->set("disable", qFuzzyIsNull(m_lastVolume) ? 1 : 0);
+                    if (qFuzzyIsNull(m_lastVolume)) {
+                        m_levelFilter->set("disable", 1);
+                    } else {
+                        m_levelFilter->clear("disable");
+                    }
                     m_volumeSpin->setValue(m_lastVolume);
                     m_volumeSlider->setValue(fromDB(m_lastVolume) * 100.);
                 }
@@ -457,8 +429,11 @@ void MixerWidget::setupConnections()
             double dbValue = toDB(value / 100.0);
             m_volumeSpin->setValue(dbValue);
             m_levelFilter->set("level", dbValue);
-            m_levelFilter->set("disable", value == 60 ? 1 : 0);
-            m_levels.clear();
+            if (value == 60) {
+                m_levelFilter->set("disable", 1);
+            } else {
+                m_levelFilter->clear("disable");
+            }
             Q_EMIT m_manager->purgeCache();
             pCore->setDocumentModified();
         }
@@ -481,8 +456,11 @@ void MixerWidget::setupConnections()
             m_balanceSlider->setValue(value);
             if (m_balanceFilter != nullptr) {
                 m_balanceFilter->set("start", (value + 50) / 100.);
-                m_balanceFilter->set("disable", value == 0 ? 1 : 0);
-                m_levels.clear();
+                if (value == 0) {
+                    m_balanceFilter->set("disable", 1);
+                } else {
+                    m_balanceFilter->clear("disable");
+                }
                 Q_EMIT m_manager->purgeCache();
                 pCore->setDocumentModified();
             }
@@ -568,28 +546,9 @@ void MixerWidget::updateTrackLabelStyle()
     m_trackLabel->setStyleSheet(style);
 }
 
-void MixerWidget::updateAudioLevel(int pos)
-{
-    QMutexLocker lk(&m_storeMutex);
-    if (m_levels.contains(pos)) {
-        m_audioMeterWidget->setAudioValues(m_levels.value(pos));
-        // m_levels.remove(pos);
-    } else {
-        m_audioMeterWidget->setAudioValues(m_audioData);
-    }
-}
-
 void MixerWidget::reset()
 {
-    QMutexLocker lk(&m_storeMutex);
-    m_levels.clear();
     m_audioMeterWidget->reset();
-}
-
-void MixerWidget::clear()
-{
-    QMutexLocker lk(&m_storeMutex);
-    m_levels.clear();
 }
 
 bool MixerWidget::isMute() const
@@ -692,29 +651,28 @@ void MixerWidget::setRecordState(bool recording)
 void MixerWidget::connectMixer(bool doConnect)
 {
     if (doConnect) {
-        if (m_tid == -1) {
-            // Master level
-            connect(pCore.get(), &Core::audioLevelsAvailable, m_audioMeterWidget.get(), &AudioLevelWidget::setAudioValues);
-        } else if (m_listener == nullptr) {
-            m_listener = m_monitorFilter->listen("property-changed", this,
-                                                 m_manager->audioLevelV2() ? reinterpret_cast<mlt_listener>(property_changedV2)
-                                                                           : reinterpret_cast<mlt_listener>(property_changed));
-        }
+        connect(pCore.get(), &Core::audioLevelsAvailable, this, &MixerWidget::checkAudioValues);
     } else {
-        if (m_tid == -1) {
-            disconnect(pCore.get(), &Core::audioLevelsAvailable, m_audioMeterWidget.get(), &AudioLevelWidget::setAudioValues);
-        } else {
-            delete m_listener;
-            m_listener = nullptr;
-        }
+        disconnect(pCore.get(), &Core::audioLevelsAvailable, this, &MixerWidget::checkAudioValues);
     }
     pauseMonitoring(!doConnect);
+}
+
+void MixerWidget::checkAudioValues(QMap<int, QVector<double>> levels)
+{
+    if (levels.contains(m_tid)) {
+        m_audioMeterWidget->setAudioValues(levels.value(m_tid));
+    }
 }
 
 void MixerWidget::pauseMonitoring(bool pause)
 {
     if (m_monitorFilter) {
-        m_monitorFilter->set("disable", pause ? 1 : 0);
+        if (pause) {
+            m_monitorFilter->set("disable", 1);
+        } else {
+            m_monitorFilter->clear("disable");
+        }
     }
 }
 

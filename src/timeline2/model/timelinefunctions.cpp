@@ -425,7 +425,7 @@ bool TimelineFunctions::requestClipCutAll(std::shared_ptr<TimelineItemModel> tim
     unsigned count = 0;
     auto subModel = timeline->getSubtitleModel();
     if (subModel && !subModel->isLocked()) {
-        for (int layer = 0; layer < subModel->getMaxLayer(); layer++) {
+        for (int layer = 0; layer <= subModel->getMaxLayer(); layer++) {
             int clipId = timeline->getClipByPosition(-2, position, layer);
             if (clipId > -1) {
                 // Found subtitle clip at position in track, cut it. Update undo/redo as we go.
@@ -2011,14 +2011,8 @@ QString TimelineFunctions::copyClips(const std::shared_ptr<TimelineItemModel> &t
         }
     });
 
-    qDebug() << "==============\n GROUP ROOTS: ";
-    for (int gp : groupRoots) {
-        qDebug() << "GROUP: " << gp;
-    }
-    qDebug() << "\n=======";
     grp.appendChild(copiedItems.createTextNode(timeline->m_groups->toJson(groupRoots)));
 
-    qDebug() << " / // / PASTED DOC: \n\n" << copiedItems.toString() << "\n\n------------";
     return copiedItems.toString();
 }
 
@@ -2284,8 +2278,9 @@ bool TimelineFunctions::pasteClips(const std::shared_ptr<TimelineItemModel> &tim
     }
     std::function<void(const QString &)> callBack = [timeline, copiedItems, position, inPos, duration](const QString &binId) {
         waitingBinIds.removeAll(binId);
+        // The clip is deleted again if its file could not be loaded
         auto clip = pCore->projectItemModel()->getClipByBinID(binId);
-        if (clip->clipType() == ClipType::Timeline) {
+        if (clip && clip->clipType() == ClipType::Timeline) {
             sequencesToInit[binId] = clip->getSequenceUuid();
         }
         if (waitingBinIds.isEmpty()) {
@@ -3611,7 +3606,6 @@ QDomDocument TimelineFunctions::extractClip(const std::shared_ptr<TimelineItemMo
             }
         }
     }
-    qDebug() << "=== GOT CONVERTED DOCUMENT\n\n" << destDoc.toString();
     return destDoc;
 }
 
